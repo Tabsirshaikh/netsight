@@ -24,8 +24,11 @@ def across_track_equalise(
 
     `swath` must be non-negative linear intensity (not dB). Each block's column levels are the
     per-column `nanmedian`; the output is rescaled to the median of those levels. Columns with
-    fewer than `min_count` finite values in a block come out NaN for that block. Blocks are
-    `block` pings long; a short tail (< `block // 2`) is merged into the previous block.
+    fewer than `min_count` finite values in a block come out NaN for that block, as do columns
+    whose level is `<= eps` (e.g. a median of 0), which would otherwise be amplified by ~1/eps;
+    such columns are excluded from the block level. Blocks are `block` pings long; a short tail
+    (< `block // 2`) is merged into the previous block. Swaths (or tails) with fewer than
+    `min_count` pings therefore produce NaN; `min_count > block` raises ValueError.
 
     Equalisation is empirical: an along-track feature spanning more than half a block's pings
     pulls the column median and can still be partly or wholly erased.
@@ -34,6 +37,8 @@ def across_track_equalise(
         raise ValueError(f"block must be >= 1, got {block}")
     if min_count < 1:
         raise ValueError(f"min_count must be >= 1, got {min_count}")
+    if min_count > block:
+        raise ValueError(f"min_count ({min_count}) must be <= block ({block})")
     data = np.asarray(swath, dtype=np.float64)
     out = np.full(data.shape, np.nan, dtype=np.float64)
     with warnings.catch_warnings():
@@ -42,6 +47,7 @@ def across_track_equalise(
             chunk = data[rows]
             col_level = np.nanmedian(chunk, axis=0)
             col_level[np.isfinite(chunk).sum(axis=0) < min_count] = np.nan
+            col_level[col_level <= eps] = np.nan
             level = np.nanmedian(col_level)
             out[rows] = chunk / (col_level + eps) * level
     return out.astype(np.float32)

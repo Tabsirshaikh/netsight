@@ -63,7 +63,28 @@ def test_min_count_gives_nan_for_sparse_columns():
     assert np.isfinite(out_lax[3, 1]) and np.isfinite(out_lax[15:, 2]).all()
 
 
-@pytest.mark.parametrize("kwargs", [{"block": 0}, {"block": -5}, {"min_count": 0}])
+def test_min_count_is_applied_per_block():
+    sw = np.ones((40, 3))
+    sw[:15, 1] = np.nan  # column 1: 5 finite values in block 0, 20 in block 1
+    out = across_track_equalise(sw, block=20, min_count=10)
+    assert np.isnan(out[:20, 1]).all()
+    assert np.isfinite(out[20:, 1]).all()
+    assert np.isfinite(out[:, [0, 2]]).all()
+
+
+def test_near_zero_median_column_is_invalidated_not_amplified():
+    sw = np.ones((20, 4))
+    sw[:12, 1] = 0.0  # 60% zeros, 40% ones -> column median is 0
+    out = across_track_equalise(sw, block=20)
+    assert np.isnan(out[:, 1]).all()
+    assert np.isfinite(out[:, [0, 2, 3]]).all()
+    assert out[:, [0, 2, 3]].max() < 10.0
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"block": 0}, {"block": -5}, {"min_count": 0}, {"block": 5, "min_count": 6}, {"block": 1}],
+)
 def test_invalid_parameters_raise(kwargs):
     with pytest.raises(ValueError):
         across_track_equalise(np.ones((10, 3)), **kwargs)
