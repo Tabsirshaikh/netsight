@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.enums import MaskFlags
 from scipy import ndimage
 
 from netsight.core.hashing import file_sha256
@@ -49,12 +50,14 @@ def _infer_nodata_mask(raw: np.ndarray, dtype: str) -> tuple[np.ndarray, int] | 
     border = np.concatenate([raw[0], raw[-1], raw[1:-1, 0], raw[1:-1, -1]])
     for candidate in (0, _SENTINEL_MAX[dtype]):
         if (border == candidate).mean() > 0.5:
-            labels, _ = ndimage.label(raw == candidate)  # default structure: 4-connectivity
+            labels, n = ndimage.label(raw == candidate)  # default structure: 4-connectivity
             border_labels = np.unique(
                 np.concatenate([labels[0], labels[-1], labels[1:-1, 0], labels[1:-1, -1]])
             )
-            border_labels = border_labels[border_labels != 0]
-            return np.isin(labels, border_labels), candidate
+            lut = np.zeros(n + 1, dtype=bool)
+            lut[border_labels] = True
+            lut[0] = False
+            return lut[labels], candidate
     return None
 
 
@@ -66,27 +69,35 @@ def read_mosaic(path: str | Path, band: int = 1, nodata: float | None = None) ->
         dtype = src.dtypes[band - 1]
         declared = src.nodata
         array = src.read(band, out_dtype="float32")
+        flags = set(src.mask_flag_enums[band - 1])
+        has_mask = bool(flags - {MaskFlags.all_valid, MaskFlags.nodata})
+        sources = []
         if nodata is not None:
             array[array == np.float32(nodata)] = np.nan
-            source = "override"
+            sources.append("override")
         elif declared is not None:
             array[array == np.float32(declared)] = np.nan
-            source = "declared"
-        else:
+            sources.append("declared")
+        if has_mask:
+            array[src.read_masks(band) == 0] = np.nan
+            sources.append("mask")
+            notes.append("dataset mask band (internal mask or alpha) applied as no-coverage")
+        if not sources:
             inferred = _infer_nodata_mask(src.read(band), dtype)
             if inferred is None:
-                source = "none"
+                sources.append("none")
                 notes.append(
-                    "nodata undeclared; no sentinel inferred — all pixels treated as valid"
+                    "nodata undeclared; no sentinel inferred - all pixels treated as valid"
                 )
             else:
                 mask, sentinel = inferred
                 array[mask] = np.nan
-                source = "inferred"
+                sources.append("inferred")
                 notes.append(
                     f"nodata undeclared; inferred {sentinel} from border-connected "
                     f"no-coverage regions ({int(mask.sum())} pixels)"
                 )
+        source = "+".join(sources)
         transform = tuple(src.transform)[:6]
         crs = src.crs
         units = "degree" if crs is not None and crs.is_geographic else "metre"

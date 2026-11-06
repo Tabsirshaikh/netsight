@@ -104,3 +104,26 @@ def test_multiband_mosaic_records_band_count(tmp_path):
     assert m.extra["band"] == 2 and m.extra["band_count"] == 2
     assert m.array[0, 0] == 50.0
     assert any("2 bands" in n and "band 2" in n for n in m.provenance.notes)
+
+
+def test_dataset_mask_band_is_honoured(tmp_path):
+    from rasterio.enums import MaskFlags
+
+    path = tmp_path / "masked.tif"
+    data = np.full((10, 10), 120, dtype=np.uint8)
+    mask = np.full((10, 10), 255, dtype=np.uint8)
+    mask[:2, :] = 0
+    with rasterio.open(
+        path, "w", driver="GTiff", width=10, height=10, count=1, dtype="uint8",
+        crs="EPSG:32619", transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
+    ) as dst:
+        dst.write(data, 1)
+        dst.write_mask(mask)
+    with rasterio.open(path) as src:
+        assert src.nodata is None and MaskFlags.per_dataset in src.mask_flag_enums[0]
+    m = read_mosaic(path)
+    assert m.valid_fraction == pytest.approx(0.8)
+    assert m.extra["nodata_source"] == "mask"
+    assert any("mask band" in n for n in m.provenance.notes)
+    assert not any("no sentinel inferred" in n for n in m.provenance.notes)
+    assert all(n.isascii() for n in m.provenance.notes)
