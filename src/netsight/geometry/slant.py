@@ -44,6 +44,8 @@ def bottom_track(
             continue
         hits = np.nonzero(np.convolve(above, kernel, mode="valid") == run)[0]
         if hits.size:
+            # Sample i is centred at (i + 0.5) * spacing; the first seabed centre is >= altitude,
+            # so altitude lies in ((i0 - 0.5), (i0 + 0.5)] * spacing and i0 * spacing is unbiased.
             alt[i] = (hits[0] + start) * sample_spacing_m
     return _nan_median_filter(alt, smooth_pings)
 
@@ -57,7 +59,7 @@ def fuse_altitude(
     out = np.full(recorded.shape, np.nan)
     sources: list[str] = []
     for i, (rec, trk) in enumerate(zip(recorded, tracked, strict=True)):
-        if math.isfinite(rec) and (not math.isfinite(trk) or abs(rec - trk) <= tol_m):
+        if math.isfinite(rec) and rec > 0 and (not math.isfinite(trk) or abs(rec - trk) <= tol_m):
             out[i] = rec
             sources.append("recorded")
         elif math.isfinite(trk):
@@ -85,8 +87,12 @@ def to_ground_range(
     ok = (slant > altitude_m) & np.isfinite(row)
     if ok.sum() < 2:
         return out
+    idx = np.nonzero(ok)[0]
     ground = np.sqrt(slant[ok] ** 2 - altitude_m**2)
     out[:] = np.interp(grid, ground, row[ok], left=np.nan, right=np.nan)
+    # Never bridge dropouts: NaN where the bracketing valid samples are not adjacent in the row.
+    j = np.clip(np.searchsorted(ground, grid), 1, ground.size - 1)
+    out[idx[j] - idx[j - 1] > 1] = np.nan
     return out
 
 
