@@ -14,6 +14,7 @@ SEVERITY: dict[str, float] = {
     "towfish_height": 0.3,
     "stripe": 0.6,
     "dropout": 1.0,
+    "side_dropout": 0.0,  # one side gapped: coverage is carried by per-side not_searched masks
     "repaired": 0.2,
     "ping_gap": 0.0,
     "nav_missing": 0.0,
@@ -85,6 +86,7 @@ def compute_quality(
     gap_rows: np.ndarray,
     repaired_rows: np.ndarray,
     nav_missing: np.ndarray,
+    side_dropout_rows: np.ndarray | None = None,
     thresholds: QualityThresholds = DEFAULT_THRESHOLDS,
 ) -> QualityMask:
     th = thresholds
@@ -110,6 +112,11 @@ def compute_quality(
         }
     flags["stripe"] = _stripe_rows(np.asarray(swath, dtype=np.float64), th.stripe_corr_min)
     flags["dropout"] = np.asarray(gap_rows, dtype=bool)
+    flags["side_dropout"] = (
+        np.zeros(n, dtype=bool)
+        if side_dropout_rows is None
+        else np.asarray(side_dropout_rows, dtype=bool)
+    )
     flags["repaired"] = np.asarray(repaired_rows, dtype=bool)
     pn = np.asarray(ping_numbers, dtype=np.int64)
     flags["ping_gap"] = np.concatenate([[False], np.diff(pn) > 1]) if n else np.zeros(0, bool)
