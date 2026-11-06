@@ -29,12 +29,14 @@ MSG_NMEA = 2002
 SIDESCAN_SUBSYSTEMS = (20, 21)
 SONAR_HEADER_BYTES = 240
 NMEA_MAX_GAP_MS = 2000
+MAX_START_DEPTH_SAMPLES = 10_000_000
 NOTE_MSG80 = (
     "JSF message-80 position is the last navigation fix, not time-interpolated; "
     "towfish offset unknown"
 )
 NOTE_NMEA = "position from nearest NMEA GGA fix within 2 s; towfish offset unknown"
 NOTE_WITHDRAWN = "no usable position; position withdrawn"
+NOTE_DUPLICATE = "duplicate sonar message ignored (multi-packet pings unsupported)"
 
 
 class JsfFormatError(ValueError):
@@ -92,6 +94,10 @@ def _parse_sonar(subsystem: int, channel: int, body: bytes) -> _SonarMsg:
     data_format = _u("<h", body, 34)
     payload = memoryview(body)[SONAR_HEADER_BYTES:]
     if data_format == 0:
+        # JSF Rev 1.8 (p. 11, bytes 34-35) says only "1 short per sample - Envelope Data".
+        # NetSight reads envelope as unsigned 16-bit because envelope is a non-negative
+        # magnitude; the independent pyjsf 0.0.1 reader reads it as signed. Confirm against
+        # the first real EdgeTech JSF file.
         need = n * 2
         if len(payload) < need:
             raise JsfFormatError("sample data shorter than declared")
@@ -163,6 +169,10 @@ def _parse_gga(text: str) -> tuple[float, float] | None:
 def _with_start_depth(msg: _SonarMsg) -> np.ndarray:
     if msg.start_depth == 0:
         return msg.samples
+    if msg.start_depth > MAX_START_DEPTH_SAMPLES:
+        raise JsfFormatError(
+            f"implausible start depth {msg.start_depth} samples in ping {msg.ping_number}"
+        )
     return np.concatenate([np.full(msg.start_depth, np.nan, dtype=np.float32), msg.samples])
 
 
@@ -191,7 +201,11 @@ def read_jsf(
     by_ping: dict[int, dict[int, _SonarMsg]] = {}
     for m in sonar:
         if m.subsystem == chosen:
-            by_ping.setdefault(m.ping_number, {})[m.channel] = m
+            sides = by_ping.setdefault(m.ping_number, {})
+            if m.channel in sides:
+                notes[NOTE_DUPLICATE] += 1
+            else:
+                sides[m.channel] = m
     gga.sort()
     gga_times = np.array([g[0] for g in gga], dtype=np.int64)
 

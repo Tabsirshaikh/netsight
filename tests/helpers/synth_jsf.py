@@ -39,6 +39,7 @@ def sonar_message(
     weight: int = 0,
     data_format: int = 0,
     samples: Sequence[float] | None = None,
+    iq: Sequence[tuple[float, float]] | None = None,
 ) -> bytes:
     body = bytearray(240)
     struct.pack_into("<i", body, 0, t_s)
@@ -62,10 +63,19 @@ def sonar_message(
     struct.pack_into("<h", body, 174, round(pitch_deg * 32768 / 180))
     struct.pack_into("<h", body, 176, round(roll_deg * 32768 / 180))
     struct.pack_into("<I", body, 200, ms_today)
+    if iq is not None:  # explicit (I, Q) pairs for data_format=1; n_samples must match len(iq)
+        iq_arr = np.asarray(iq, dtype=np.float64)
+        return _frame(
+            80,
+            subsystem,
+            channel,
+            bytes(body) + np.clip(iq_arr, -32768, 32767).astype("<i2").tobytes(),
+        )
     if samples is None:
         samples = seabed_row(n_samples, interval_ns * 1e-9 * 750.0, altitude_m, ping=ping_number)
     values = np.asarray(samples, dtype=np.float64) * (2**weight)
     if data_format == 0:
+        # Envelope written as unsigned 16-bit; see the note in netsight.io.jsf._parse_sonar.
         payload = np.clip(values, 0, 65535).astype("<u2").tobytes()
     else:
         iq = np.stack([values, np.zeros_like(values)], axis=1)

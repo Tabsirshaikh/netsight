@@ -70,7 +70,47 @@ def test_start_depth_prepends_nan(tmp_path):
 
 def test_analytic_format_becomes_magnitude(tmp_path):
     rec = read_jsf(write_synthetic_jsf(tmp_path / "iq.jsf", n_pings=1, data_format=1))
-    assert (rec.pings[0].port >= 0).all()
+    # generator writes I=value, Q=0, so the magnitude equals the envelope row
+    np.testing.assert_array_equal(rec.pings[0].port, _expected_row().astype(np.float32))
+
+
+def test_analytic_format_uses_both_i_and_q(tmp_path):
+    f = tmp_path / "iq34.jsf"
+    pairs = [(3, 4), (-3, 4), (0, -5), (6, 8)]
+    data = b"".join(
+        sonar_message(ping_number=1, channel=c, n_samples=4, data_format=1, iq=pairs)
+        for c in (0, 1)
+    )
+    f.write_bytes(data)
+    p = read_jsf(f).pings[0]
+    np.testing.assert_allclose(p.port, [5, 5, 5, 10])
+    np.testing.assert_allclose(p.stbd, [5, 5, 5, 10])
+
+
+def test_duplicate_sonar_message_keeps_first_and_is_noted(tmp_path):
+    f = tmp_path / "dup.jsf"
+    first = [100.0] * 8
+    second = [900.0] * 8
+    data = sonar_message(ping_number=7, channel=0, n_samples=8, samples=first)
+    data += sonar_message(ping_number=7, channel=0, n_samples=8, samples=second)
+    data += sonar_message(ping_number=7, channel=1, n_samples=8, samples=first)
+    f.write_bytes(data)
+    rec = read_jsf(f)
+    assert rec.n_pings == 1
+    np.testing.assert_array_equal(rec.pings[0].port, np.full(8, 100.0, dtype=np.float32))
+    assert any(
+        "duplicate sonar message ignored (multi-packet pings unsupported)" in n and "(1 pings)" in n
+        for n in rec.provenance.notes
+    )
+
+
+def test_absurd_start_depth_raises_naming_ping(tmp_path):
+    f = tmp_path / "deep.jsf"
+    data = sonar_message(ping_number=42, channel=0, n_samples=8, start_depth=10_000_001)
+    data += sonar_message(ping_number=42, channel=1, n_samples=8)
+    f.write_bytes(data)
+    with pytest.raises(JsfFormatError, match="ping 42"):
+        read_jsf(f)
 
 
 def test_bad_marker_and_truncation_raise(tmp_path):
