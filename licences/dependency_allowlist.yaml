@@ -1,0 +1,5 @@
+# Dependencies exempt from the GPL/AGPL licence scan (netsight.governance.licences).
+# Each entry needs a name and a reason, for example:
+#   - {name: some-package, reason: "GPL with linking exception, used as a separate tool only"}
+# Keep this empty unless a package has been reviewed and the reason recorded here.
+allowlist: []

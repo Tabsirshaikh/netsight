@@ -1,6 +1,7 @@
 # NetSight dataset manifest - generated 2026-11-06 from research (see datasets_detail.md)
 # tier: commercial = permissive licence verified; conditional = share-alike/ambiguity/attribution notices;
 #       research_only = licence unknown or restrictive. Never build commercial artefacts from research_only.
+# availability (optional): available | blocked (cannot be fetched yet) | request (needs a request to the owner)
 datasets:
   - id: bodine_substrate
     title: "Sidescan Sonar Substrate, Depth, and Shadow Image-Label-Pairs"
@@ -10,6 +11,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files:
       - name: PINGMapperv2.0_SegmentationModelsv1.0_ImageLabelPairs.zip
         url: https://zenodo.org/api/records/10119320/files/PINGMapperv2.0_SegmentationModelsv1.0_ImageLabelPairs.zip/content
@@ -27,6 +29,7 @@ datasets:
     licence_status: conflict
     commercial_use: conditional
     tier: conditional
+    availability: available
     files:
       - name: GhostVision_DatasetAndModels.zip
         url: https://zenodo.org/api/records/20056679/files/GhostVision_DatasetAndModels.zip/content
@@ -44,6 +47,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files:
       - name: SubPipeMini2.zip
         url: https://zenodo.org/api/records/10808161/files/SubPipeMini2.zip/content
@@ -69,6 +73,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files:
       - name: sss_ssl_dataset_N713_384.z01
         url: https://zenodo.org/api/records/10209445/files/sss_ssl_dataset_N713_384.z01/content
@@ -94,6 +99,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files:
       - name: sidescan_sonar_images_PRIME_CNN_training.zip
         url: https://researchdata.bath.ac.uk/1467/1/sidescan_sonar_images_PRIME_CNN_training.zip
@@ -115,6 +121,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files:
       - {name: sample.7z, url: "https://zenodo.org/api/records/13778485/files/sample.7z/content", size: 1732018855, md5: fcadef5fcc1a2cbdcc67812a5df732d7}
       - {name: data_export_recordings.7z, url: "https://zenodo.org/api/records/13778485/files/data_export_recordings.7z/content", size: 16658054765, md5: 30c45956c0d034c27e3988711195c8c6}
@@ -133,6 +140,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: blocked
     files: []   # no direct file link in CKAN; only http://jncc.defra.gov.uk/opendata (HTML)
     format: "UNVERIFIED (raw SSS, likely XTF); size UNVERIFIED"
     labels: "none"
@@ -145,6 +153,7 @@ datasets:
     licence_status: unconfirmed
     commercial_use: unknown
     tier: research_only
+    availability: blocked
     files: []   # 3 files, ~1.14 GB per search snippet; names/sizes/md5 not retrieved
     format: "PNG exports from EdgeTech 2205 low-freq (520 kHz), 1728 px wide x variable height; 286 images, 28 wrecks; Thunder Bay NMS, Lake Huron"
     labels: "binary per-pixel masks (0 other, 1 shipwreck); 50/50 site-grouped train/test; 1728x1728 tiles stride 100 (2539 train / 1722 test)"
@@ -155,8 +164,9 @@ datasets:
     source_url: https://github.com/Jorwnpay/NK-Sonar-Image-Dataset
     licence: "MIT (repo LICENSE; data-specific licence not stated)"
     licence_status: unconfirmed
-    commercial_use: conditional
-    tier: conditional
+    commercial_use: unknown
+    tier: research_only
+    availability: available
     files:
       - {name: big_propeller.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/big_propeller.zip", size: 788429, md5: null}
       - {name: cylinder.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/cylinder.zip", size: 856536, md5: null}
@@ -173,6 +183,7 @@ datasets:
     format: "JPEG, Oculus M750d multibeam forward-looking sonar (750 kHz / 1.2 MHz), 2617 images, Bohai Bay; NOT side-scan"
     labels: "image-level classification, 8 classes (big_propeller, cylinder, fishing_net, floats, iron_pipeline, small_propeller, soft_pipeline, tire); train_abs.txt '<path> <label>', ten-fold index lists in kfold_*.txt"
     notes: "No checksums published (compute locally). Small (~52 MB) - smoke-test candidate. Confirm data licence with authors."
+
   - id: noaa_hsurveys
     title: "NOAA NOS hydrographic surveys (NCEI): side-scan mosaics, backscatter, Descriptive Reports"
     source_url: https://data.ngdc.noaa.gov/platforms/ocean/nos/coast/
@@ -180,6 +191,7 @@ datasets:
     licence_status: verified
     commercial_use: "yes"
     tier: commercial
+    availability: available
     files: []   # per-survey files fetched in Step 1B
     format: "GeoTIFF side-scan mosaics (1 m), multibeam backscatter TIFF, BAG, DR PDF"
     labels: "contact dispositions inside Descriptive Reports (expert disposition, not physical verification)"
