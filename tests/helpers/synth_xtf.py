@@ -42,6 +42,8 @@ def write_synthetic_xtf(
     ping_numbers: Sequence[int] | None = None,
     seconds: Sequence[int] | None = None,
     channel_types: Sequence[int] = (1, 2),
+    channel_numbers: Sequence[int] | None = None,  # ChannelNumber written per ping channel
+    months: Sequence[int] | None = None,  # per-ping month (to write corrupt dates)
 ) -> Path:
     path = Path(path)
     fh = XTFFileHeader()
@@ -70,7 +72,8 @@ def write_synthetic_xtf(
         pad = (-record) % 64
         ph.NumBytesThisRecord = record + pad
         sec = seconds[p] if seconds is not None else p
-        ph.Year, ph.Month, ph.Day = 2026, 11, 6
+        ph.Year, ph.Day = 2026, 6
+        ph.Month = months[p] if months is not None else 11
         ph.Hour, ph.Minute, ph.Second = 12, sec // 60, sec % 60
         ph.PingNumber = ping_numbers[p] if ping_numbers is not None else 100 + p
         lon, lat = 72.8 + p * 1e-5, 18.9
@@ -87,7 +90,7 @@ def write_synthetic_xtf(
         row = seabed_row(n_samples, spacing, altitude_m, ping=p)
         for c in range(len(channel_types)):
             ch = XTFPingChanHeader()
-            ch.ChannelNumber = c
+            ch.ChannelNumber = channel_numbers[c] if channel_numbers is not None else c
             ch.SlantRange = slant_range_m
             ch.NumSamples = n_samples
             ch.Frequency = 455

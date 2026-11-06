@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ctypes
 import math
+import struct
 from collections import Counter
+from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
 
@@ -34,6 +37,32 @@ class XtfFormatError(ValueError):
     pass
 
 
+# Errors pyxtf can raise on truncated, empty or unsupported (e.g. mixed-channel) files.
+_PYXTF_ERRORS = (
+    IndexError,
+    KeyError,
+    RuntimeError,
+    ValueError,
+    EOFError,
+    NotImplementedError,
+    struct.error,
+    ctypes.ArgumentError,
+)
+
+
+def _next_or_format_error(gen: Iterator, name: str):
+    """next(gen) with pyxtf's decode failures reported as XtfFormatError; None at end."""
+    try:
+        return next(gen)
+    except StopIteration:
+        return None
+    except _PYXTF_ERRORS as exc:
+        raise XtfFormatError(
+            f"{name}: pyxtf could not decode sonar pings (file may be truncated or contain "
+            f"non-side-scan channels such as sub-bottom; unsupported): {exc!r}"
+        ) from exc
+
+
 def _finite_or_nan(value: float) -> float:
     value = float(value)
     return value if math.isfinite(value) else math.nan
@@ -49,6 +78,14 @@ def _sound_velocity(raw: float) -> float:
     return 1500.0
 
 
+def _channel_type(fh, chan_header) -> int | None:
+    """Channel type per pyxtf's own mapping: ChanInfo[ChannelNumber]; None if out of range."""
+    number = int(chan_header.ChannelNumber)
+    if not 0 <= number < len(fh.ChanInfo):
+        return None
+    return int(fh.ChanInfo[number].TypeOfChannel)
+
+
 def read_xtf(path: str | Path) -> SonarRecord:
     p = Path(path)
     index_file = p.with_suffix(".pyxtf_idx")
@@ -57,7 +94,16 @@ def read_xtf(path: str | Path) -> SonarRecord:
             f"{index_file} exists; pyxtf would unpickle it. Delete it before reading {p.name}."
         )
     gen = pyxtf.xtf_read_gen(str(p), types=[pyxtf.XTFHeaderType.sonar])
-    fh = next(gen)
+    try:
+        return _read_packets(p, gen)
+    finally:
+        gen.close()
+
+
+def _read_packets(p: Path, gen: Iterator) -> SonarRecord:
+    fh = _next_or_format_error(gen, p.name)
+    if fh is None:
+        raise XtfFormatError(f"{p.name}: empty XTF file (no file header)")
     n_sonar = int(fh.NumberOfSonarChannels)
     # pyxtf filters sonar_info to sonar-type channels, so it can be shorter than n_sonar
     channel_types = [int(ci.TypeOfChannel) for ci in fh.sonar_info]
@@ -74,11 +120,22 @@ def read_xtf(path: str | Path) -> SonarRecord:
 
     rows = []
     notes: Counter[str] = Counter()
-    for pk in gen:
-        if len(pk.data) <= max(port_i, stbd_i):
+    while (pk := _next_or_format_error(gen, p.name)) is not None:
+        chans = pk.ping_chan_headers
+        if len(pk.data) <= max(port_i, stbd_i) or len(chans) <= max(port_i, stbd_i):
             notes["ping skipped: missing side-scan channel data"] += 1
             continue
-        chans = pk.ping_chan_headers
+        if not (
+            _channel_type(fh, chans[port_i]) == PORT_CHANNEL_TYPE
+            and _channel_type(fh, chans[stbd_i]) == STBD_CHANNEL_TYPE
+        ):
+            notes["ping skipped: channel identity mismatch"] += 1
+            continue
+        try:
+            ping_time = pk.get_time()
+        except ValueError:
+            notes["ping skipped: invalid timestamp"] += 1
+            continue
         slant = float(chans[port_i].SlantRange)
         if not slant > 0:
             notes["ping skipped: non-positive slant range"] += 1
@@ -107,7 +164,7 @@ def read_xtf(path: str | Path) -> SonarRecord:
         altitude = float(pk.SensorPrimaryAltitude)
         rows.append(
             dict(
-                time=pk.get_time(),
+                time=ping_time,
                 ping_number=int(pk.PingNumber),
                 x=fix.x,
                 y=fix.y,
@@ -122,6 +179,10 @@ def read_xtf(path: str | Path) -> SonarRecord:
                 stbd=stbd,
                 sound_velocity_ms=_sound_velocity(pk.SoundVelocity),
             )
+        )
+    if not rows:
+        raise XtfFormatError(
+            f"{p.name}: no usable side-scan pings ({dict(notes) or 'file contains no pings'})"
         )
     rows.sort(key=lambda r: (r["time"], r["ping_number"]))
     pings = [Ping(index=i, **row) for i, row in enumerate(rows)]

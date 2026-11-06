@@ -75,3 +75,76 @@ def test_requires_port_and_starboard(tmp_path):
     f = write_synthetic_xtf(tmp_path / "s.xtf", n_pings=2, channel_types=(0, 0))
     with pytest.raises(XtfFormatError):
         read_xtf(f)
+
+
+@pytest.mark.parametrize("channel_types", [(0, 1, 2), (1, 2, 0)])
+def test_mixed_channel_file_never_raises_bare_error_or_swaps_channels(tmp_path, channel_types):
+    # pyxtf filters ChanInfo to port/stbd for decoding, so a third (sub-bottom) channel in the
+    # ping records makes pyxtf raise IndexError; the reader must report that as XtfFormatError.
+    f = write_synthetic_xtf(tmp_path / "mixed.xtf", n_pings=2, channel_types=channel_types)
+    with pytest.raises(XtfFormatError, match=r"mixed\.xtf"):
+        read_xtf(f)
+
+
+@pytest.mark.parametrize("channel_types", [(1,), (1, 0)])
+def test_port_only_file_is_rejected(tmp_path, channel_types):
+    f = write_synthetic_xtf(tmp_path / "port.xtf", n_pings=2, channel_types=channel_types)
+    with pytest.raises(XtfFormatError):
+        read_xtf(f)
+
+
+def test_channel_identity_mismatch_skips_pings_then_raises(tmp_path):
+    # Header says channel 0 = port, 1 = stbd, but the pings label them the other way round.
+    f = write_synthetic_xtf(tmp_path / "swap.xtf", n_pings=3, channel_numbers=(1, 0))
+    with pytest.raises(XtfFormatError, match="channel identity mismatch"):
+        read_xtf(f)
+
+
+def test_channel_number_out_of_range_is_not_a_bare_error(tmp_path):
+    f = write_synthetic_xtf(tmp_path / "oor.xtf", n_pings=2, channel_numbers=(0, 9))
+    with pytest.raises(XtfFormatError):
+        read_xtf(f)
+
+
+def test_identity_mismatch_on_some_pings_is_counted_in_notes(tmp_path):
+    good = write_synthetic_xtf(tmp_path / "g.xtf", n_pings=4)
+    raw = bytearray(good.read_bytes())
+    # Corrupt nothing structurally; instead build a file where only some pings are fine by
+    # concatenating a swapped-label file's ping records after a good file.
+    swapped = write_synthetic_xtf(tmp_path / "s.xtf", n_pings=2, channel_numbers=(1, 0))
+    header_len = len(raw) - 4 * _record_len()
+    raw += swapped.read_bytes()[header_len:]
+    mixed = tmp_path / "partial.xtf"
+    mixed.write_bytes(bytes(raw))
+    rec = read_xtf(mixed)
+    assert rec.n_pings == 4
+    assert any("channel identity mismatch (2 pings)" in n for n in rec.provenance.notes)
+
+
+def test_corrupt_date_skips_ping_and_is_counted(tmp_path):
+    f = write_synthetic_xtf(tmp_path / "d.xtf", n_pings=4, months=[11, 13, 11, 11])
+    rec = read_xtf(f)
+    assert rec.n_pings == 3
+    assert any("invalid timestamp (1 pings)" in n for n in rec.provenance.notes)
+
+
+def test_truncated_or_empty_file_raises_format_error(tmp_path):
+    empty = tmp_path / "empty.xtf"
+    empty.write_bytes(b"")
+    with pytest.raises(XtfFormatError, match=r"empty\.xtf"):
+        read_xtf(empty)
+    junk = tmp_path / "junk.xtf"
+    junk.write_bytes(b"\x01" * 10)
+    with pytest.raises(XtfFormatError, match=r"junk\.xtf"):
+        read_xtf(junk)
+
+
+def _record_len(n_samples: int = 500, n_chans: int = 2) -> int:
+    import ctypes
+
+    from pyxtf import XTFPingChanHeader, XTFPingHeader
+
+    record = ctypes.sizeof(XTFPingHeader) + n_chans * (
+        ctypes.sizeof(XTFPingChanHeader) + n_samples * 2
+    )
+    return record + (-record) % 64
