@@ -96,6 +96,29 @@ Reading:
   is about as large as the differences (the mine training set has only ~400 objects). Next:
   mine-only runs, tile 320 vs 640, three seeds each.
 - Absolute scores are low because these are short comparison trainings, not the final model.
+- These three runs used an LR schedule sized from the tile cap instead of the tiles available
+  (fixed in b03d07a); all three were affected about equally (~2,500 of an assumed 4,000 tiles).
+
+### Repeat: mine detection only, three seeds (12 epochs, schedule fixed)
+
+| Mine test (2015, 2021) | Tile 320 | Tile 640 | 640 - 320 per seed |
+|---|---|---|---|
+| AP50 | 0.178 +/- 0.006 | 0.201 +/- 0.025 | +0.034, -0.011, +0.048 |
+| AP50 small | 0.077 +/- 0.006 | 0.088 +/- 0.012 | +0.012, -0.005, +0.023 |
+| recall @ 1 FP/image | 0.167 +/- 0.011 | 0.183 +/- 0.022 | +0.011, -0.004, +0.039 |
+
+The single-run small-object advantage of tile 320 (0.138 vs 0.092) did **not** reproduce: with
+three seeds, 640 is equal or slightly better on every metric (better in 2 of 3 seeds each).
+Enlarging a tile adds pixels but no detail: side-scan targets are already blurred along track
+(see the physics note above), and small tiles lose context. Training jointly with GhostVision
+also helped the mine set (AP50 0.224 joint vs 0.178 alone).
+
+## Decision
+
+**Tile 640 for all datasets, trained jointly.** Images larger than 640 px are cut into 640 px
+tiles with 25% overlap plus a full-image pass; images of 640 px or less go to the network whole.
+It also costs about 4x less inference than 320 px tiles. The box-size measurements predicted the
+opposite for the mine set; the controlled pilot overruled them, which is why the pilot was run.
 
 Labels are always stored in original-image coordinates, never in tile coordinates, so changing
 the tile size later is a re-run of code: no relabelling and no extra labelling cost.
