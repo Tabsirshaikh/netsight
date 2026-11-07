@@ -59,6 +59,17 @@ End with a progress summary for the user.
   file reads. If a usage-limit message appears, stop cleanly; this file is the place to resume.
 - Log progress below as it happens.
 
+## Budget and delegation (user, 03:50)
+
+- Claude weekly usage was at 78%: keep my own token use low.
+- **Model work (anything that makes the detector better: training, data balance, evaluation,
+  pipeline fixes) I do myself.** Everything else goes to other agents: web app / dashboard and
+  other self-contained code to `cx/gpt-6.1-sol-medium`; literature, data surveys and drafting to
+  `cx/gpt-6-luna-medium`; web-heavy hunts to Gemini. I review what they produce.
+- If phases A-D finish early, continue with the next work packages of `docs/plan/final.md`
+  (WP4 evidence features, WP5 calibration + operating point on real detector output, WP7 gate,
+  WP9 evidence pack), in that order.
+
 ## Progress log
 
 - 03:45 plan written; replication and survey running.
