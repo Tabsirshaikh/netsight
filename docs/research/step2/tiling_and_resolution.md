@@ -48,5 +48,29 @@ is chosen from data, then checked by experiment:
    640, 25% overlap, plus full-image pass) and compare AP_small and recall at a fixed false-alarm
    rate on held-out surveys. Keep the winner.
 
+## Measured box sizes (step 2 of the procedure)
+
+Shorter box side in pixels, at the images' stored resolution (10th percentile / median / 90th):
+
+| Dataset | Images (no object) | Boxes | Shorter side p10 / p50 / p90 |
+|---|---|---|---|
+| Mine detection, 1024 px images | 586 | 358 | 17 / 27 / 44 |
+| Mine detection, 416 px images | 584 | 310 | 7.4 / 12 / 18.5 |
+| (all mine images, 5 survey years) | 1,170 (866) | 668: 437 MILCO, 231 NOMBO | |
+| GhostVision train (640 px, resized by Roboflow) | 5,721 (1,430) | 7,469 | 16 / 39 / 77 |
+| GhostVision valid | 555 (53) | 1,275 | 8.5 / 15 / 24 |
+| GhostVision test | 398 (64) | 567 | 22 / 42 / 67 |
+
+Findings:
+- Most mine targets and all GhostVision validation targets are below the 32 px goal at stored
+  size. Shrinking whole images to 640 would make it worse; tiles enlarged ~2x (320 -> 640) bring
+  the 1024 px mine targets to a ~54 px median and GhostVision train to ~78 px.
+- GhostVision's published test split shares recordings with train (Rec14, TI, baycove: 89 of
+  398 test images), so it is re-split by recording for honest evaluation. Its validation split
+  has targets 2.5x smaller than train: a harder, differently distributed set.
+- The mine set's 416 px and 1024 px images are different images (no identical label file across
+  sizes), not resized duplicates. Evaluation holds out whole survey years.
+- AquaScan-1K and SubPipe are measured when their downloads finish.
+
 Labels are always stored in original-image coordinates, never in tile coordinates, so changing
 the tile size later is a re-run of code: no relabelling and no extra labelling cost.
