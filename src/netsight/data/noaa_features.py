@@ -44,26 +44,52 @@ OVERRIDE = re.compile(r"\b(?:do|does|did) not concur\b|\bnon-?concur", re.I)
 # "inadequate to disprove", "not considered as disproved": an object may well be there.
 INCONCLUSIVE = re.compile(
     r"\b(?:inadequate|insufficient|unable|not able|cannot|could not) to disprove"
-    r"|\bnot (?:be )?considered (?:as )?disproved",
+    r"|\bnot (?:be )?considered (?:as )?disproved|\bnot disproved\b|\bcannot be disprove[nd]\b"
+    r"|\b(?:entire|full) (?:search )?(?:area|radius)\b[^.;]{0,30}?\bnot (?:fully )?"
+    r"(?:covered|searched|conducted|completed)\b"
+    r"|\bsearch (?:area|radius) (?:was )?(?:not (?:fully )?covered|incomplete)\b",
     re.I,
 )
+# Old reports quoted inside an item ("History ..."): not evidence from this survey.
+HISTORY_BLOCK = re.compile(
+    r"^\s*history\b.*?(?=\$?[A-Z]{5,6}/(?:invreq|remrks):|\Z)", re.I | re.S
+)
+SENTENCE = re.compile(r"(?<=[.;])\s+")
+# Charted soundings (S-57 SOUNDG) are usually seabed relief. In hydrographic reports the word
+# "feature" means anything charted, sand bars included, so it alone proves nothing.
+SEABED_WORDS = re.compile(
+    r"\bmigrat(?:ed|ing|ion)\b|\bsand ?(?:waves?|bars?)\b|\bbar has\b"
+    r"|\b(?:seafloor|benthic|shoal|spoil) mounds?\b|\bnatural (?:seafloor )?shoal\b",
+    re.I,
+)
+SPECIFIC_OBJECT_WORDS = re.compile(
+    # "object detection" is a multibeam survey mode, not an object
+    r"\b(?:rocks?|wrecks?|obstructions?|debris|contacts?|objects?(?! detection)|targets?"
+    r"|piles?|pilings?)\b",
+    re.I,
+)
+GENERIC_FEATURE = re.compile(r"\bfeatures?\b", re.I)
 DISPROVED = re.compile(
     r"disprov|no evidence of|\bnot (?:been |be )?(?:found|seen|observed|located|detected|visible"
-    r"|identified|present)\b|did not see|could not (?:be )?(?:find|found|locate|located)"
+    r"|identified|present)\b|did not (?:see|find|detect|locate)\b"
+    r"|could not (?:be )?(?:find|found|locate|located)"
     r"|\bnothing\b(?:\s+\w+){0,4}?\s+(?:was |were )?(?:found|seen|observed|detected)"
     r"|\bno (?:\w+ ){0,2}?(?:feature|contact|object|wreck|obstruction)s?\b(?:\s+\w+){0,4}?\s+"
     r"(?:was |were )?(?:found|seen|observed|detected)",
     re.I,
 )
 RECLASS = re.compile(
-    r"\bnot an? (?:rock|wreck|obstruction|pile|object|feature)\b|\bsand ?waves?\b", re.I
+    r"\bnot an? (?:rock|wreck|obstruction|pile|object|feature)\b|\bsand ?waves?\b"
+    r"|\bmigrat(?:ed|ing|ion)\b|\bsand ?bars?\b|\b(?:seafloor|benthic|shoal) mounds?\b",
+    re.I,
 )
 # S-57 classes that are seabed relief, not discrete objects (MORFAC moorings are objects).
 SEABED_CLASSES = frozenset({"SNDWAV", "SOUNDG", "DEPARE", "SBDARE", "DEPCNT"})
 REAL = re.compile(
     r"verified|\bfound\b|\blocated\b|\bseen\b|\bobserved\b|evidence of|\bdeveloped\b"
     r"|\bis real\b|update least depth|least depth of|\bpart of\b|\bas surveyed\b"
-    r"|\b(?:chart|add|insert)\b(?:\s+\w+){0,3}?\s+(?:rock|wreck|obstruction|pile|stakes?)\b",
+    r"|\b(?:chart|add|insert)\b(?:\s+\w+){0,3}?\s+(?:rock|wreck|obstruction|pile|piling"
+    r"|stakes?|cable|chain|pipe(?:line)?|buoy|debris|object)\b",
     re.I,
 )
 DELETE = re.compile(r"\b(?:delete|remove)\b", re.I)
@@ -110,6 +136,13 @@ def _clean(text: str) -> str:
     return " ".join(text.replace("[None]", " ").split())
 
 
+def strip_history(text: str) -> str:
+    """Remove quoted history (a leading 'History ...' block and sentences about the history)."""
+    text = HISTORY_BLOCK.sub(" ", text)
+    kept = [s for s in SENTENCE.split(text) if "histor" not in s.lower()]
+    return _clean(" ".join(kept))
+
+
 def _field(lines: list[str], label: str, stops: tuple[str, ...]) -> str:
     """Text after `label` (same line and following lines) up to a stop label or page footer."""
     for i, line in enumerate(lines):
@@ -148,6 +181,9 @@ def classify_feature(
     concur, only its notes count. Weak signals (S-57 seabed class, measured least depth, a
     bare delete/retain) apply only when no field is decisive.
     """
+    remarks, recommendation, office_notes = (
+        strip_history(t) for t in (remarks, recommendation, office_notes)
+    )
     overrode = bool(OVERRIDE.search(office_notes))
     texts = (office_notes,) if overrode else (office_notes, recommendation, remarks)
     disposition = None
@@ -162,8 +198,17 @@ def classify_feature(
             disposition = "verified"
         if disposition:
             break
+    joined = " ".join(texts)
+    if s57_class == "SOUNDG" and disposition in (None, "verified"):
+        if SEABED_WORDS.search(joined):
+            disposition = "reclassified_seabed"
+        elif SPECIFIC_OBJECT_WORDS.search(joined):
+            disposition = "verified" if disposition == "verified" else "unknown"
+        elif GENERIC_FEATURE.search(joined):
+            disposition = "unknown"  # a "feature" charted as a depth: object or relief
+        else:
+            disposition = "reclassified_seabed"
     if disposition is None:
-        joined = " ".join(texts)
         if s57_class in SEABED_CLASSES:
             disposition = "reclassified_seabed"
         elif least_depth_m is not None:
@@ -174,7 +219,7 @@ def classify_feature(
             disposition = "retained_unverified"
         else:
             disposition = "unknown"
-    if disposition == "verified" and s57_class in SEABED_CLASSES:
+    if disposition == "verified" and s57_class in SEABED_CLASSES - {"SOUNDG"}:
         disposition = "reclassified_seabed"  # a real shoal is seabed relief, not an object
     return disposition, REAL_BY_DISPOSITION[disposition], overrode
 
@@ -197,7 +242,7 @@ def _parse_item(survey_id: str, item_no: str, name: str, body: str, page: int):
     depth_m = LEAST_DEPTH.search(body)
     least_depth = float(depth_m.group(1)) if depth_m and depth_m.group(1) else None
     lines = body.splitlines()
-    remarks = _field(lines, "Remarks", REMARK_STOPS)
+    remarks = strip_history(_field(lines, "Remarks", REMARK_STOPS))
     recommendation = _field(lines, "Hydrographer Recommendations", RECOMMENDATION_STOPS)
     office = _field(lines, "Office Notes", OFFICE_STOPS)
     s57_at = body.find("S-57 Data")

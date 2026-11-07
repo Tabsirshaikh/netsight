@@ -222,3 +222,68 @@ def test_position_accepts_typographic_minute_marks(minute_mark):
     )
     (item,) = parse_feature_items([page], "H3")
     assert item.lon == pytest.approx(-(85 + 40 / 60 + 8.2 / 3600))
+
+
+# Second spot-check, newer surveys (H12500-H13094); texts quoted from the CC0 DRs.
+@pytest.mark.parametrize(
+    ("office", "rec", "remarks", "s57", "expected", "real"),
+    [
+        # H12890 1.2: search incomplete, item retained
+        ("", "", "No objects were found within 100 meters of the charted position in the survey "
+         "coverage. However; the entire search area was not covered due to water depth; "
+         "therefore retain AWOIS 1577 position as charted.", "WRECKS", "inconclusive", None),
+        # H12800 1.2: the cable is real, only the buoy was missing
+        ("", "Chart mooring cable", "Mooring cable line, submerged. Buoy not observed.",
+         "CBLSUB", "verified", True),
+        # history alone must not decide: "OBSTR. NOT DISPROVED" is a 1960s survey
+        ("", "", "History 03636 HISTORY H8526/60--OPR-410; OBSTR. NOT DISPROVED AFTER SLIGHT "
+         "REDUCTION IN LINE SPACING CARRIED FORWARD. CRANES/invreq: Type: OBSTRUCTION",
+         "CRANES", "unknown", None),
+        # H12884 1.1: charted as a sounding, but described as a feature on the seafloor
+        ("", "Hydrographer recommends charting feature", "SOUNDG/remrks: Feature on seafloor",
+         "SOUNDG", "unknown", None),
+    ],
+)
+def test_classify_feature_second_spot_check(office, rec, remarks, s57, expected, real):
+    disposition, is_real, _ = classify_feature(
+        remarks, rec, office, s57_class=s57, least_depth_m=None
+    )
+    assert (disposition, is_real) == (expected, real)
+
+
+def test_history_mention_of_diver_is_not_physical_verification():
+    # H12608 1.12: the diver is in the item's history, not in this survey
+    page = (
+        "1.12)  AWOIS 9767\nSurvey Position:  29° 40' 01.0\" N, 094° 30' 02.0\" W\n"
+        "Least Depth:  18.29 m\nRemarks:\n$CSYMB/remrks: Charted obstruction associated with "
+        "AWOIS item 9767. The history indicates that diver investigation described a corner "
+        "section of a brick building. SSS and MBES data indicate several rock-like features.\n"
+    )
+    (item,) = parse_feature_items([page], "H4")
+    assert item.ground_truth != "physical_verification"
+    assert "diver" not in item.remarks.lower()
+
+
+@pytest.mark.parametrize(
+    ("remarks", "rec", "expected", "real"),
+    [
+        # H12656 1.2: a migrating sand bar is seabed, even though soundings were found
+        ("SOUNDG/remrks: Charted Dixey Bar has migrated along the western and southern extents. "
+         "Soundings around 30 12 02.63N were 10 to 18 feet shoaler than charted.",
+         "Chart soundings", "reclassified_seabed", False),
+        # H12572 2.3: a found 'feature' charted as a depth is ambiguous
+        ("SOUNDG/remrks: Found feature using object detection level MBES and 200% SSS.",
+         "Retain", "unknown", None),
+        # a rock charted as a sounding is a real object
+        ("SOUNDG/remrks: Rock found with object detection MBES.", "Chart rock as a sounding.",
+         "verified", True),
+        # H12572 2.1: disproved stays disproved
+        ("SOUNDG/remrks: Did not find feature using klein 5000 Side Scan sonar.", "",
+         "disproved", False),
+    ],
+)
+def test_charted_soundings(remarks, rec, expected, real):
+    disposition, is_real, _ = classify_feature(
+        remarks, rec, "", s57_class="SOUNDG", least_depth_m=12.0
+    )
+    assert (disposition, is_real) == (expected, real)
