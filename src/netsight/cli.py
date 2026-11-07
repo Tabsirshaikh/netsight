@@ -1,4 +1,4 @@
-"""NetSight command line: inspect, normalise, licences."""
+"""NetSight command line: inspect, normalise, licences, data, noaa."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 
 from netsight import __version__
+from netsight.data.commands import add_subcommands as add_data_subcommands
+from netsight.data.download import DownloadError
 from netsight.governance.licences import (
     default_allowlist_path,
     default_register_path,
@@ -150,11 +152,18 @@ def main(argv: list[str] | None = None) -> int:
         help="reviewed dependencies exempt from the licence scan",
     )
     p_lic.set_defaults(func=_cmd_licences)
+    add_data_subcommands(sub)
     args = parser.parse_args(argv)
     debug = args.debug or os.environ.get("NETSIGHT_DEBUG", "") not in ("", "0")
     try:
         return args.func(args)
-    except (UnsupportedFormatError, ValueError, OSError, UnsafeIndexFileError) as exc:
+    except (
+        UnsupportedFormatError,
+        ValueError,
+        OSError,
+        UnsafeIndexFileError,
+        DownloadError,
+    ) as exc:
         if debug:
             raise
         print(f"error: {exc}", file=sys.stderr)
