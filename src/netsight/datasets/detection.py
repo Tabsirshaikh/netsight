@@ -258,3 +258,47 @@ def aquascan_group(file_name: str) -> str:
         return m.group(0)
     m = _DMY.search(file_name)
     return m.group(1) if m else "other"
+
+
+def _zip_key(path: str) -> str:
+    st = Path(path).stat()
+    return f"{st.st_size}:{int(st.st_mtime)}"
+
+
+def drop_unreadable(
+    samples: Sequence[DetectionSample], cache_path: str | Path
+) -> tuple[list[DetectionSample], list[DetectionSample]]:
+    """(readable, unreadable) samples. Each image is decoded once; results are cached per zip
+    and recomputed when the zip changes. Truncated images are dropped, never 'repaired'
+    (a partly decoded image is filled with garbage)."""
+    from PIL import Image
+
+    cache_path = Path(cache_path)
+    cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+    by_zip: dict[str, list[DetectionSample]] = {}
+    for s in samples:
+        by_zip.setdefault(s.zip_path, []).append(s)
+    changed = False
+    bad: set[tuple[str, str]] = set()
+    for zp, group in by_zip.items():
+        entry = cache.get(zp)
+        checked = set(entry["checked"]) if entry and entry["key"] == _zip_key(zp) else set()
+        known_bad = set(entry["bad"]) if entry and entry["key"] == _zip_key(zp) else set()
+        todo = [s for s in group if s.member not in checked]
+        if todo:
+            with zipfile.ZipFile(zp) as z:
+                for s in todo:
+                    try:
+                        Image.open(io.BytesIO(z.read(s.member))).convert("L").load()
+                    except (OSError, SyntaxError, ValueError, struct.error):
+                        known_bad.add(s.member)
+                    checked.add(s.member)
+            cache[zp] = {"key": _zip_key(zp), "checked": sorted(checked), "bad": sorted(known_bad)}
+            changed = True
+        bad |= {(zp, m) for m in known_bad}
+    if changed:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(cache), encoding="utf-8")
+    kept = [s for s in samples if (s.zip_path, s.member) not in bad]
+    dropped = [s for s in samples if (s.zip_path, s.member) in bad]
+    return kept, dropped

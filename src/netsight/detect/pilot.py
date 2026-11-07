@@ -21,6 +21,7 @@ from torch.utils.data import DataLoader
 from netsight.config import data_dir
 from netsight.datasets.detection import (
     aquascan_group,
+    drop_unreadable,
     group_split,
     ordered_group_split,
     read_coco_zip,
@@ -57,19 +58,28 @@ DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot
 
 def build_splits(root: Path) -> dict:
     raw = root / "raw"
-    mine = read_yolo_zip([raw / "mine_detection_sss" / f"{y}.zip" for y in MINE_YEARS],
-                         "mine_detection_sss", ["MILCO", "NOMBO"])
-    gv = read_ghostvision_zip(raw / "ghostvision_crabpot" / "GhostVision_DatasetAndModels.zip")
+    cache = root / "processed" / "unreadable_images.json"
+    dropped: list = []
+
+    def readable(samples):
+        kept, bad = drop_unreadable(samples, cache)
+        dropped.extend(f"{s.dataset_id}:{s.member}" for s in bad)
+        return kept
+
+    mine = readable(read_yolo_zip([raw / "mine_detection_sss" / f"{y}.zip" for y in MINE_YEARS],
+                         "mine_detection_sss", ["MILCO", "NOMBO"]))
+    gv = readable(read_ghostvision_zip(
+        raw / "ghostvision_crabpot" / "GhostVision_DatasetAndModels.zip"))
     m = group_split(mine, test_groups={"2015", "2021"}, val_groups={"2017"})
     shift = [s for s in gv if s.group == "Contact"]  # targets 2.5x smaller: shifted test set
     g = group_split([s for s in gv if s.group != "Contact"],
                     test_groups={"Rec9", "Rec14", "Rec8"}, val_groups={"Rec13", "Rec2"})
-    aq = read_yolo_zip([raw / "aquascan_1k" / "AquaScan-1K.zip"], "aquascan_1k", ["Human"],
-                       group_fn=aquascan_group)
+    aq = readable(read_yolo_zip([raw / "aquascan_1k" / "AquaScan-1K.zip"], "aquascan_1k", ["Human"],
+                       group_fn=aquascan_group))
     a = group_split(aq, test_groups={"2025-11-23", "13SEP25"},
                     val_groups={"2025-06-29", "2025-06-15"})
-    sp = read_coco_zip(raw / "subpipe_mini2" / "SubPipeMini2.zip", "subpipe_mini2",
-                       group_fn=subpipe_group)
+    sp = readable(read_coco_zip(raw / "subpipe_mini2" / "SubPipeMini2.zip", "subpipe_mini2",
+                       group_fn=subpipe_group))
     p = ordered_group_split(sp, n_val=2, n_test=3, gap=1,
                             key=lambda grp: int(grp[1:]) if grp[1:].isdigit() else -1)
     return {
@@ -78,6 +88,7 @@ def build_splits(root: Path) -> dict:
                 "subpipe": p["val"]},
         "test": {"mine": m["test"], "ghostvision": g["test"], "ghostvision_shift": shift,
                  "aquascan": a["test"], "subpipe": p["test"]},
+        "dropped_unreadable": dropped,
     }
 
 
@@ -238,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
     config = {**vars(args), "device": device, "net_input": 640, "overlap": 0.25,
               "full_image_pass": True}
     (out / "metrics.json").write_text(json.dumps(
-        {"config": config, "best_val_mean_ap50": best, "history": history, "test": test},
+        {"config": config, "best_val_mean_ap50": best, "history": history, "test": test,
+         "dropped_unreadable_images": splits["dropped_unreadable"]},
         indent=2, default=float), encoding="utf-8")
     manifest = build_training_manifest(
         sorted(keep), load_register(default_register_path()),

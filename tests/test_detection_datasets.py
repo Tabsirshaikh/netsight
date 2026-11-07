@@ -170,3 +170,28 @@ def test_ordered_split_leaves_gaps_between_parts(tmp_path):
     assert groups["train"] == ["g0", "g1", "g2"]  # g3 is the gap before val
     with pytest.raises(ValueError):
         ordered_group_split(samples, n_val=5, n_test=5, gap=1)
+
+
+def test_drop_unreadable_excludes_truncated_images_and_caches(tmp_path):
+    from netsight.datasets.detection import drop_unreadable
+
+    good = io.BytesIO()
+    Image.new("L", (64, 64), 50).save(good, format="PNG")
+    noisy = io.BytesIO()
+    Image.fromarray(np.random.default_rng(0).integers(0, 255, (64, 64)).astype(np.uint8)).save(
+        noisy, format="PNG")
+    truncated = noisy.getvalue()[: len(noisy.getvalue()) // 2]  # header intact, data cut
+    z = tmp_path / "t.zip"
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("ok.png", good.getvalue())
+        f.writestr("ok.txt", "")
+        f.writestr("cut.png", truncated)
+        f.writestr("cut.txt", "")
+    samples = read_yolo_zip([z], "d", ["o"])
+    cache = tmp_path / "unreadable.json"
+    kept, dropped = drop_unreadable(samples, cache)
+    assert [s.member for s in kept] == ["ok.png"] and [s.member for s in dropped] == ["cut.png"]
+    assert cache.exists()
+    # second call uses the cache (no decoding needed) and gives the same answer
+    kept2, dropped2 = drop_unreadable(samples, cache)
+    assert [s.member for s in dropped2] == ["cut.png"]
