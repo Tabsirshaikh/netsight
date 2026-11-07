@@ -12,6 +12,9 @@ PAYLOAD = bytes(range(256)) * 400  # 102,400 bytes
 
 class RangeHandler(BaseHTTPRequestHandler):
     files: dict[str, bytes] = {}
+    # path -> number of upcoming requests to sabotage, and how: "short" sends a short body with
+    # a matching Content-Length (clean early close), "cut" promises the full length but stops.
+    faults: dict[str, list] = {}
 
     def do_GET(self):  # noqa: N802
         body = self.files.get(self.path)
@@ -27,6 +30,15 @@ class RangeHandler(BaseHTTPRequestHandler):
             body = body[start:]
         else:
             self.send_response(200)
+        fault = self.faults.get(self.path)
+        if fault and fault[0] > 0:
+            fault[0] -= 1
+            part = body[: len(body) // 3]
+            self.send_header("Content-Length", str(len(part) if fault[1] == "short" else len(body)))
+            self.end_headers()
+            self.wfile.write(part)
+            self.close_connection = True
+            return
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -37,6 +49,7 @@ class RangeHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture()
 def server():
+    RangeHandler.faults = {}
     RangeHandler.files = {
         "/data.bin": PAYLOAD,
         "/listing/": (
@@ -79,6 +92,29 @@ def test_download_rejects_bad_checksum_and_keeps_no_file(server, tmp_path):
     with pytest.raises(DownloadError, match="md5"):
         download(f"{server}/data.bin", tmp_path / "d.bin", md5="0" * 32)
     assert not (tmp_path / "d.bin").exists()
+
+
+@pytest.mark.parametrize("mode", ["short", "cut"])
+def test_download_resumes_after_dropped_connections(server, tmp_path, mode):
+    # what happened with Zenodo: the server closed early on a large file
+    RangeHandler.faults = {"/data.bin": [2, mode]}
+    md5 = hashlib.md5(PAYLOAD).hexdigest()
+    out = download(
+        f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), md5=md5, retry_wait=0
+    )
+    assert out.read_bytes() == PAYLOAD
+    RangeHandler.faults = {}
+
+
+def test_download_keeps_partial_when_retries_run_out(server, tmp_path):
+    RangeHandler.faults = {"/data.bin": [10, "short"]}
+    with pytest.raises(DownloadError, match="incomplete"):
+        download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), attempts=2,
+                 retry_wait=0)
+    part = tmp_path / "d.bin.part"
+    assert part.exists() and 0 < part.stat().st_size < len(PAYLOAD)
+    assert part.read_bytes() == PAYLOAD[: part.stat().st_size]  # resumable, not corrupt
+    RangeHandler.faults = {}
 
 
 def test_download_http_error(server, tmp_path):
