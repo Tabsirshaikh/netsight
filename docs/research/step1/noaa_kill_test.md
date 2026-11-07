@@ -68,6 +68,33 @@ Cannot, and must not be claimed:
 - Outcome wording is parsed by rules tuned on these 29 surveys and regression-tested
   (`tests/test_noaa_features.py`). A larger sample needs another spot-check before use.
 
+## Second sample (newer surveys)
+
+Every sixth survey number from H12500 to H13094 (100 numbers, fetched one at a time with a
+pause). 44 numbers do not exist on NCEI, 4 reports failed to download, **56 were parsed and 19
+(34%) have usable outcomes**, fewer than the 52% of the first sample.
+
+A fresh hand spot-check of 24 random items from these surveys found six kinds of error, all
+fixed with regression tests built from the quoted report text (`tests/test_noaa_features.py`):
+an incomplete search read as "disproved"; "buoy not observed" read as the mooring cable being
+absent; old history quoted inside an item deciding the outcome (and turning a 1940s diver
+report into "physical verification"); "did not find" missing from the not-found phrases;
+migrating sand bars counted as real objects; and "object detection" (a multibeam mode) read as
+an object. In hydrographic reports "feature" means anything charted, so a charted sounding
+described only as a "feature" is now *unknown*, not real and not seabed.
+
+Both samples together (93 surveys parsed):
+
+| | Surveys usable | Decided items | Real | Not real |
+|---|---|---|---|---|
+| Feature Reports | 35 of 93 | 253 | 169 | 84 |
+| Contact-outcome tables | 2 | 36 | 32 | 4 |
+
+Not-real items are mostly "charted item not found again" and "seabed, not an object", not
+"a new sonar contact was a false alarm". The class balance (about 2 real : 1 not real) is the
+opposite of a real detector's output, which is dominated by false alarms. Both points limit
+these labels to building and testing the calibration pipeline (claim level "indicative").
+
 ## Next
 
 1. Scale to a few hundred surveys (throttled) for a larger outcome table, then spot-check a
