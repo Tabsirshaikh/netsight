@@ -90,3 +90,8 @@ End with a progress summary for the user.
   calibration fitted on own-dataset val and on pooled val. v0.1 dump running. WP4 classical
   evidence features (shadow/height, mesh FFT/Gabor, ridge+Hough lines, ripple structure tensor,
   background-statistics anomaly baseline) delegated to GPT-6.1-sol.
+- 06:50 v0.1 calibration on real held-out detections (detector_calibration_v0.1.md): raw scores
+  overconfident (worse than constant on 5/6 test sets); beta/Platt calibration gives positive
+  Brier skill on 5/6; pooled calibrator ~ per-dataset. Flip TTA chosen on val (hflip+WBF),
+  confirmed on test +0.02 mean AP50 (tta_v0.1.md). WP4 evidence features committed.
+  v0.2 at epoch 3 (val after epoch 2: mine 0.232, gv 0.162, aq 0.255, sp 0.790, sctd 0.788).
