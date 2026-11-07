@@ -302,3 +302,42 @@ def drop_unreadable(
     kept = [s for s in samples if (s.zip_path, s.member) not in bad]
     dropped = [s for s in samples if (s.zip_path, s.member) in bad]
     return kept, dropped
+
+
+def read_voc_zip(zip_path: str | Path, dataset_id: str) -> list[DetectionSample]:
+    """Pascal VOC (Annotations/*.xml + JPEGImages/), with ImageSets/Main/{split}.txt lists.
+
+    VOC pixel indices are 1-based and inclusive; boxes are converted to 0-based edges.
+    """
+    import xml.etree.ElementTree as ET  # stdlib; parses only zip members, no entity expansion
+
+    zip_path = Path(zip_path)
+    samples = []
+    with zipfile.ZipFile(zip_path) as z:
+        members = set(z.namelist())
+        split_of: dict[str, str] = {}
+        for name in members:
+            m = re.search(r"ImageSets/Main/([A-Za-z]+)\.txt$", name)
+            if m:
+                for stem in z.read(name).decode().split():
+                    split_of.setdefault(stem, m.group(1))
+        for xml_name in sorted(n for n in members if "/Annotations/" in n and n.endswith(".xml")):
+            root = ET.fromstring(z.read(xml_name))
+            folder = xml_name.split("/Annotations/")[0]
+            stem = PurePosixPath(xml_name).stem
+            member = f"{folder}/JPEGImages/{root.findtext('filename') or stem + '.jpg'}"
+            if member not in members:
+                continue
+            w, h = image_size(z.read(member))
+            boxes, labels = [], []
+            for obj in root.iter("object"):
+                bb = obj.find("bndbox")
+                x0, y0, x1, y1 = (float(bb.findtext(k)) for k in ("xmin", "ymin", "xmax", "ymax"))
+                boxes.append([x0 - 1, y0 - 1, x1, y1])
+                labels.append(obj.findtext("name"))
+            samples.append(DetectionSample(
+                dataset_id=dataset_id, zip_path=str(zip_path), member=member, width=w, height=h,
+                boxes=np.asarray(boxes, dtype=float).reshape(-1, 4), labels=labels,
+                group=split_of.get(stem, "unsplit"), source_split=split_of.get(stem),
+            ))
+    return samples

@@ -255,11 +255,13 @@ datasets:
     licence_status: unconfirmed
     commercial_use: unknown
     tier: research_only
-    availability: request
-    files: []
-    format: "side-scan images of shipwrecks, aircraft, humans (DBnet paper; repo)"
-    labels: "bounding boxes (repo); UNVERIFIED"
-    notes: "Research model only until the authors grant a licence (add to outreach emails)."
+    availability: available
+    files:
+      - {name: SCTD.zip, url: "https://raw.githubusercontent.com/MingqiangNing/SCTD/master/SCTD.zip", size: 83140304, md5: null}
+      - {name: SCTD2.0.rar, url: "https://media.githubusercontent.com/media/MingqiangNing/SCTD/master/SCTD2.0.rar", size: 115436302, md5: null}
+    format: "side-scan images of shipwrecks, aircraft, humans; v1.0 zip, v2.0 rar (Git LFS)"
+    labels: "Pascal VOC xml boxes (README)"
+    notes: "No licence in the repository: research models only (stored under raw/research_only). Cite Zhang et al. 2022 IEEE TGRS and Ning et al. 2025 IEEE TGRS. Ask the authors for a licence (outreach)."
 
   - id: kadal_multisource_v6
     title: "KADAL Multi-Source Side-Scan Sonar Dataset (v6)"

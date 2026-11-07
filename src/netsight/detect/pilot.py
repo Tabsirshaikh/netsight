@@ -26,6 +26,7 @@ from netsight.datasets.detection import (
     ordered_group_split,
     read_coco_zip,
     read_ghostvision_zip,
+    read_voc_zip,
     read_yolo_zip,
     subpipe_group,
 )
@@ -53,7 +54,7 @@ from netsight.trust.provenance import Ledger
 
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
 DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot",
-               "aquascan": "aquascan_1k", "subpipe": "subpipe_mini2"}
+               "aquascan": "aquascan_1k", "subpipe": "subpipe_mini2", "sctd": "sctd"}
 
 
 def build_splits(root: Path) -> dict:
@@ -82,12 +83,18 @@ def build_splits(root: Path) -> dict:
                        group_fn=subpipe_group))
     p = ordered_group_split(sp, n_val=2, n_test=3, gap=1,
                             key=lambda grp: int(grp[1:]) if grp[1:].isdigit() else -1)
+    sctd_zip = raw / "research_only" / "sctd" / "SCTD2.0_VOC2007.zip"
+    sc = readable(read_voc_zip(sctd_zip, "sctd")) if sctd_zip.exists() else []
+    trainval = sorted((s for s in sc if s.source_split != "test"), key=lambda s: s.member)
+    sc_val = trainval[::10]  # SCTD has no recording groups: official test + 10% val
+    sc_train = [s for s in trainval if s not in sc_val]
+    sc_test = [s for s in sc if s.source_split == "test"]
     return {
-        "train": m["train"] + g["train"] + a["train"] + p["train"],
+        "train": m["train"] + g["train"] + a["train"] + p["train"] + sc_train,
         "val": {"mine": m["val"], "ghostvision": g["val"], "aquascan": a["val"],
-                "subpipe": p["val"]},
+                "subpipe": p["val"], "sctd": sc_val},
         "test": {"mine": m["test"], "ghostvision": g["test"], "ghostvision_shift": shift,
-                 "aquascan": a["test"], "subpipe": p["test"]},
+                 "aquascan": a["test"], "subpipe": p["test"], "sctd": sc_test},
         "dropped_unreadable": dropped,
     }
 

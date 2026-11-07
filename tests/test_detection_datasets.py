@@ -195,3 +195,27 @@ def test_drop_unreadable_excludes_truncated_images_and_caches(tmp_path):
     # second call uses the cache (no decoding needed) and gives the same answer
     kept2, dropped2 = drop_unreadable(samples, cache)
     assert [s.member for s in dropped2] == ["cut.png"]
+
+
+def test_read_voc_zip_with_official_split(tmp_path):
+    from netsight.datasets.detection import read_voc_zip
+
+    z = tmp_path / "voc.zip"
+    xml = ("<annotation><filename>{n}.jpg</filename><size><width>100</width><height>50"
+           "</height></size>{objs}</annotation>")
+    obj = ("<object><name>{c}</name><bndbox><xmin>{a}</xmin><ymin>{b}</ymin><xmax>{c2}</xmax>"
+           "<ymax>{d}</ymax></bndbox></object>")
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("VOC2007/JPEGImages/000001.jpg", _jpeg(100, 50))
+        f.writestr("VOC2007/Annotations/000001.xml", xml.format(
+            n="000001", objs=obj.format(c="ship", a=11, b=6, c2=40, d=30)))
+        f.writestr("VOC2007/JPEGImages/000002.jpg", _jpeg(100, 50))
+        f.writestr("VOC2007/Annotations/000002.xml", xml.format(n="000002", objs=""))
+        f.writestr("VOC2007/ImageSets/Main/test.txt", "000002\n")
+        f.writestr("VOC2007/ImageSets/Main/trainval.txt", "000001\n")
+    samples = {s.member.rsplit("/", 1)[-1]: s for s in read_voc_zip(z, "sctd")}
+    a = samples["000001.jpg"]
+    np.testing.assert_allclose(a.boxes, [[10, 5, 40, 30]])  # VOC is 1-based: xmin-1, ymin-1
+    assert a.labels == ["ship"] and a.source_split == "trainval"
+    assert samples["000002.jpg"].source_split == "test"
+    assert samples["000002.jpg"].boxes.shape == (0, 4)
