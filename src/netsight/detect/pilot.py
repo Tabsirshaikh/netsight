@@ -43,6 +43,7 @@ from netsight.models.manifest import build_training_manifest, write_manifest
 from netsight.trust.provenance import Ledger
 
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
+DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot"}
 
 
 def build_splits(root: Path) -> dict:
@@ -125,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--val-images", type=int, default=120, help="per dataset, per evaluation")
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
     ap.add_argument("--eval-every", type=int, default=2, help="validate every N epochs")
     args = ap.parse_args(argv)
@@ -136,13 +138,24 @@ def main(argv: list[str] | None = None) -> int:
     torch.set_float32_matmul_precision("high")  # TF32 for the ops autocast leaves in fp32
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
+    chosen = [d.strip() for d in args.datasets.split(",") if d.strip()]
+    unknown = sorted(set(chosen) - set(DATASET_IDS))
+    if not chosen or unknown:
+        raise SystemExit(f"--datasets must name some of {sorted(DATASET_IDS)}")
+    keep = {DATASET_IDS[d] for d in chosen}
     splits = build_splits(data_dir())
+    splits["train"] = [s for s in splits["train"] if s.dataset_id in keep]
+    for part in ("val", "test"):
+        splits[part] = {k: v for k, v in splits[part].items() if k.split("_")[0] in chosen}
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
     model, processor = load_model(args.checkpoint)
     model.to(device)
     cache = ImageCache(max_images=2048)
     opt = make_optimizer(model, args.lr)
-    steps_per_epoch = -(-args.max_tiles // args.batch)
+    # size the LR schedule from the tiles actually available, not from the --max-tiles cap
+    n_tiles = len(balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
+                                 max_tiles=args.max_tiles, seed=args.seed))
+    steps_per_epoch = max(1, n_tiles // args.batch)
     total = steps_per_epoch * args.epochs
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10)))
@@ -208,8 +221,9 @@ def main(argv: list[str] | None = None) -> int:
         {"config": config, "best_val_mean_ap50": best, "history": history, "test": test},
         indent=2, default=float), encoding="utf-8")
     manifest = build_training_manifest(
-        ["mine_detection_sss", "ghostvision_crabpot"], load_register(default_register_path()),
-        model_id=f"dfine-s-pilot-tile{args.tile}", code_version=_git_commit(), config=config)
+        sorted(keep), load_register(default_register_path()),
+        model_id=f"dfine-s-pilot-{'+'.join(chosen)}-tile{args.tile}-seed{args.seed}",
+        code_version=_git_commit(), config=config)
     write_manifest(manifest, out / "model",
                    ledger=Ledger(data_dir() / "provenance" / "models.jsonl"))
     print(json.dumps({"tile": args.tile, "best_val_mean_ap50": best,

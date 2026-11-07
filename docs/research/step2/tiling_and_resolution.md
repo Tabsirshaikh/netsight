@@ -72,5 +72,30 @@ Findings:
   sizes), not resized duplicates. Evaluation holds out whole survey years.
 - AquaScan-1K and SubPipe are measured when their downloads finish.
 
+## Pilot results (step 4 of the procedure), 2026-11-07
+
+D-FINE-S from COCO weights, trained jointly on mine-detection and GhostVision training groups
+(balanced tile budget per dataset), 8 short epochs, one seed per setting, tiles resized to 640,
+25% overlap plus a full-image pass. Held-out test groups:
+
+| Test set | Metric | Tile 320 | Tile 480 | Tile 640 |
+|---|---|---|---|---|
+| Mine (2015, 2021; 168 images, 462 objects) | AP50 | 0.224 | 0.195 | 0.227 |
+| | AP50 small (< 32 px) | 0.138 | 0.078 | 0.092 |
+| | recall @ 1 FP/image | 0.227 | 0.167 | 0.227 |
+| GhostVision (Rec9, Rec14, Rec8; 443 / 611) | AP50 | 0.240 | 0.286 | 0.331 |
+| | recall @ 1 FP/image | 0.293 | 0.336 | 0.458 |
+| GhostVision shifted (Contact; 555 / 1,275) | AP50 | 0.223 | 0.303 | 0.250 |
+| | recall @ 1 FP/image | 0.258 | 0.384 | 0.317 |
+
+Reading:
+- **GhostVision: no tiling (its images are already 640x640 crops).** Every metric rises
+  monotonically from 320 to 640.
+- **Mine detection: undecided.** Tile 320 is clearly better on small objects, but overall it ties
+  with 640 and 480 is worst. A non-monotonic result from single runs means run-to-run variation
+  is about as large as the differences (the mine training set has only ~400 objects). Next:
+  mine-only runs, tile 320 vs 640, three seeds each.
+- Absolute scores are low because these are short comparison trainings, not the final model.
+
 Labels are always stored in original-image coordinates, never in tile coordinates, so changing
 the tile size later is a re-run of code: no relabelling and no extra labelling cost.
