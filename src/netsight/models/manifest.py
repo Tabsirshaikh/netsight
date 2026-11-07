@@ -100,3 +100,18 @@ def assert_product_release(manifest: dict) -> None:
             f"{manifest.get('model_id')} is a research model (trained on: {blocked}); "
             "retrain on commercial-tier data or obtain licences before release"
         )
+
+
+def inherited_dataset_ids(own: Iterable[str], base_model_dir: str | Path | None) -> list[str]:
+    """A fine-tuned model inherits every dataset its starting model learned from.
+
+    Fine-tuning a research model on clean data does not make it a product model: the base
+    model's manifest datasets are added after the model's own (duplicates removed).
+    """
+    ids = list(dict.fromkeys(own))
+    if base_model_dir is not None:
+        path = Path(base_model_dir) / "manifest.json"
+        if path.exists():
+            base = json.loads(path.read_text(encoding="utf-8"))
+            ids += [d["id"] for d in base.get("datasets", []) if d["id"] not in ids]
+    return ids

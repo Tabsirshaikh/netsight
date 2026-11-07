@@ -50,7 +50,11 @@ from netsight.detect.evaluation import (
 from netsight.detect.pixel_cache import PixelCache
 from netsight.detect.training_tiles import EarlyStopper, balanced_tiles  # noqa: F401 (re-export)
 from netsight.governance.licences import default_register_path, load_register
-from netsight.models.manifest import build_training_manifest, write_manifest
+from netsight.models.manifest import (
+    build_training_manifest,
+    inherited_dataset_ids,
+    write_manifest,
+)
 from netsight.trust.provenance import Ledger
 
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
@@ -157,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-repeat", type=int, default=4,
                     help="max times a small dataset's tiles are repeated to reach --min-share")
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
+    ap.add_argument("--init-from", default=None,
+                    help="start from a trained NetSight model folder (fine-tuning)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--model-id", default=None, help="name recorded in the model label")
@@ -181,7 +187,13 @@ def main(argv: list[str] | None = None) -> int:
     for part in ("val", "test"):
         splits[part] = {k: v for k, v in splits[part].items() if k.split("_")[0] in chosen}
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
-    model, processor = load_model(args.checkpoint)
+    if args.init_from:  # fine-tune a trained NetSight model; its datasets are inherited
+        from transformers import AutoImageProcessor, DFineForObjectDetection
+
+        model = DFineForObjectDetection.from_pretrained(args.init_from)
+        processor = AutoImageProcessor.from_pretrained(args.init_from)
+    else:
+        model, processor = load_model(args.checkpoint)
     model.to(device)
     pixel_dir = data_dir() / "cache" / "pixels"
     use_pixels = (pixel_dir / "index.json").exists()  # decoded once: no per-tile decoding
@@ -263,7 +275,8 @@ def main(argv: list[str] | None = None) -> int:
          "dropped_unreadable_images": splits["dropped_unreadable"]},
         indent=2, default=float), encoding="utf-8")
     manifest = build_training_manifest(
-        sorted(keep), load_register(default_register_path()),
+        inherited_dataset_ids(sorted(keep), args.init_from),
+        load_register(default_register_path()),
         model_id=args.model_id
         or f"dfine-s-pilot-{'+'.join(chosen)}-tile{args.tile}-seed{args.seed}",
         code_version=_git_commit(), config=config)

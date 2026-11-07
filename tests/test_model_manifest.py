@@ -78,3 +78,15 @@ def test_product_release_refuses_research_model():
     with pytest.raises(ResearchModelError, match="no_licence"):
         assert_product_release(_build(["no_licence"]))
     assert_product_release(_build(["clean_cc0"]))  # does not raise
+
+
+def test_fine_tuned_model_inherits_base_datasets(tmp_path):
+    from netsight.models.manifest import inherited_dataset_ids
+
+    base = _build(["clean_ccby", "no_licence"])
+    write_manifest(base, tmp_path / "base")
+    ids = inherited_dataset_ids(["clean_cc0"], tmp_path / "base")
+    assert ids == ["clean_cc0", "clean_ccby", "no_licence"]  # own first, then the base's
+    m = _build(ids)
+    assert m["model_class"] == "research"  # the base used research-only data
+    assert inherited_dataset_ids(["clean_cc0"], tmp_path / "no_such_model") == ["clean_cc0"]
