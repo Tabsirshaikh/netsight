@@ -70,9 +70,17 @@ def validate_register(entries: list[dict]) -> list[str]:
             errors.append(f"entry {i}: must be a mapping")
             continue
         label = e.get("id", f"entry {i}")
+        label = label if isinstance(label, str) else f"entry {i}"
         missing = [k for k in REQUIRED_KEYS if k not in e]
         if missing:
             errors.append(f"{label}: missing keys {missing}")
+            continue
+        not_strings = [
+            k for k in ("id", "tier", "licence_status", "availability")
+            if k in e and not isinstance(e[k], str)
+        ]
+        if not_strings:
+            errors.append(f"{label}: fields must be strings: {not_strings}")
             continue
         if e["id"] in seen:
             errors.append(f"{label}: duplicate id")
@@ -175,10 +183,12 @@ def _expression_is_forbidden(expression: str) -> bool:
 
     AND binds tighter than OR; parentheses group; "WITH <exception>" is dropped from a term.
     A GPL/AGPL (non-LGPL) term is forbidden, so an OR may be satisfied by choosing a permissive
-    alternative. Malformed input is parsed leniently, never raising.
+    alternative. A malformed expression (missing term, unbalanced parenthesis, leftover tokens)
+    never raises: it is forbidden if any GPL/AGPL text appears anywhere in it.
     """
     tokens = re.findall(r"[()]|[^\s()]+", expression)
     pos = 0
+    malformed = False
 
     def peek() -> str:
         return tokens[pos].upper() if pos < len(tokens) else ""
@@ -200,14 +210,17 @@ def _expression_is_forbidden(expression: str) -> bool:
         return any(forbidden)
 
     def parse_term() -> bool:
-        nonlocal pos
+        nonlocal pos, malformed
         if peek() == "(":
             pos += 1
             forbidden = parse_or()
             if peek() == ")":
                 pos += 1
+            else:
+                malformed = True
             return forbidden
-        if pos >= len(tokens):
+        if peek() in ("", ")", "AND", "OR", "WITH"):
+            malformed = True  # a term was expected here
             return False
         token = tokens[pos]
         pos += 1
@@ -216,8 +229,9 @@ def _expression_is_forbidden(expression: str) -> bool:
         return _is_gpl_text(token)
 
     result = parse_or()
-    # Tokens left over (stray ")" or missing operators) are checked too, so odd input fails closed.
-    return result or any(_is_gpl_text(t) for t in tokens[pos:])
+    if malformed or pos < len(tokens):
+        return any(_is_gpl_text(t) for t in tokens)
+    return result
 
 
 def forbidden_dependencies(dists, allowlist: Iterable[str] | None = None) -> list[tuple[str, str]]:

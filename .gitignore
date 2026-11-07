@@ -10,8 +10,7 @@ build/
 dist/
 
 # Data and model artefacts never go in git (see docs/data/README.md)
-data/
-!docs/data/
+/data/
 artifacts/
 runs/
 *.xtf

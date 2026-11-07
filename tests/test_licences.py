@@ -218,6 +218,34 @@ def test_spdx_expressions_evaluated_per_term(expression, expected_flagged):
     assert (flagged(FakeDist("x", expression=expression)) == {"x"}) is expected_flagged
 
 
+@pytest.mark.parametrize(
+    ("expression", "expected_flagged"),
+    [
+        # malformed expressions that contain GPL must never pass
+        ("GPL-3.0 OR", True),
+        ("GPL-3.0 OR )", True),
+        ("GPL-3.0 OR OR MIT", True),
+        ("GPL-3.0 OR ()", True),
+        ("GPL-3.0 OR AND MIT", True),
+        ("(GPL-3.0 OR MIT", True),
+        ("MIT GPL-3.0", True),
+        # malformed but GPL-free expressions are not flagged
+        ("MIT OR", False),
+        ("(MIT OR Apache-2.0", False),
+    ],
+)
+def test_malformed_expressions_fail_closed_on_gpl(expression, expected_flagged):
+    assert (flagged(FakeDist("x", expression=expression)) == {"x"}) is expected_flagged
+
+
+@pytest.mark.parametrize("field", ["id", "tier", "licence_status", "availability"])
+def test_non_string_register_fields_are_validation_errors(field):
+    entry = {**GOOD, field: ["not", "a", "string"]}
+    errors = validate_register([entry])
+    assert any(field in e for e in errors)
+    assert commercial_training_allowed(entry) is False
+
+
 def test_allowlist_skips_named_dependencies():
     gpl = FakeDist("Some_Pkg", licence="GPL-3.0-or-later")
     other = FakeDist("other", licence="GPL-3.0-or-later")
