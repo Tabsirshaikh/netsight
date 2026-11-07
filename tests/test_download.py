@@ -15,6 +15,8 @@ class RangeHandler(BaseHTTPRequestHandler):
     # path -> number of upcoming requests to sabotage, and how: "short" sends a short body with
     # a matching Content-Length (clean early close), "cut" promises the full length but stops.
     faults: dict[str, list] = {}
+    no_range: set[str] = set()  # paths served as if the server ignored Range headers
+    range_requests = 0
 
     def do_GET(self):  # noqa: N802
         body = self.files.get(self.path)
@@ -23,11 +25,14 @@ class RangeHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         rng = self.headers.get("Range")
-        if rng:
-            start = int(rng.split("=")[1].split("-")[0])
+        if rng and self.path not in self.no_range:
+            first, _, last = rng.split("=")[1].partition("-")
+            start = int(first)
+            end = int(last) if last else len(body) - 1  # inclusive, as in HTTP
             self.send_response(206)
-            self.send_header("Content-Range", f"bytes {start}-{len(body) - 1}/{len(body)}")
-            body = body[start:]
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(body)}")
+            body = body[start : end + 1]
+            RangeHandler.range_requests += 1
         else:
             self.send_response(200)
         fault = self.faults.get(self.path)
@@ -50,6 +55,8 @@ class RangeHandler(BaseHTTPRequestHandler):
 @pytest.fixture()
 def server():
     RangeHandler.faults = {}
+    RangeHandler.no_range = set()
+    RangeHandler.range_requests = 0
     RangeHandler.files = {
         "/data.bin": PAYLOAD,
         "/listing/": (
@@ -163,3 +170,48 @@ def test_list_folder_parses_listing(server):
     names = [e["name"] for e in entries]
     assert names == ["BAG/", "H12243.pdf", "H12243_SSSAB_1m_455kHz_1of2.tiff"]
     assert entries[0]["is_dir"] is True and entries[1]["is_dir"] is False
+
+
+# --- multi-connection downloads (servers that cap speed per connection, e.g. Zenodo) ------
+
+
+@pytest.fixture(autouse=True)
+def small_segments(monkeypatch):
+    import netsight.data.download as dl
+
+    monkeypatch.setattr(dl, "MIN_SEGMENT", 1024)  # let the 100 KB test file split
+
+
+def test_segmented_download_assembles_the_file(server, tmp_path):
+    md5 = hashlib.md5(PAYLOAD).hexdigest()
+    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), md5=md5,
+                   connections=4, retry_wait=0)
+    assert out.read_bytes() == PAYLOAD
+    assert RangeHandler.range_requests >= 4
+    assert not list(tmp_path.glob("d.bin.part*"))  # segments cleaned up
+
+
+def test_segmented_download_continues_an_existing_partial(server, tmp_path):
+    (tmp_path / "d.bin.part").write_bytes(PAYLOAD[:30_000])
+    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
+                   connections=3, retry_wait=0)
+    assert out.read_bytes() == PAYLOAD
+
+
+def test_segmented_download_resumes_a_dropped_segment(server, tmp_path):
+    RangeHandler.faults = {"/data.bin": [3, "short"]}
+    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
+                   md5=hashlib.md5(PAYLOAD).hexdigest(), connections=4, retry_wait=0)
+    assert out.read_bytes() == PAYLOAD
+
+
+def test_segmented_download_falls_back_when_range_is_ignored(server, tmp_path):
+    RangeHandler.no_range = {"/data.bin"}
+    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
+                   connections=4, retry_wait=0)
+    assert out.read_bytes() == PAYLOAD
+
+
+def test_segmented_download_needs_a_known_size(server, tmp_path):
+    with pytest.raises(ValueError):
+        download(f"{server}/data.bin", tmp_path / "d.bin", connections=4)

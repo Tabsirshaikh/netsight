@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import shutil
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 CHUNK = 1 << 20
+MIN_SEGMENT = 4 * CHUNK  # do not split files into pieces smaller than this
 USER_AGENT = "netsight-data/0.1 (research data download)"
 
 
@@ -56,9 +59,86 @@ def _fetch_once(url: str, part: Path, timeout: float) -> None:
                 f.write(block)
 
 
+class _RangeIgnored(Exception):
+    """The server answered a Range request with the whole file."""
+
+
+def _fetch_range(url: str, seg: Path, start: int, end: int, *, timeout: float, attempts: int,
+                 retry_wait: float) -> None:
+    """Download bytes start..end (inclusive) into seg, resuming within the range on drops."""
+    length = end - start + 1
+    for attempt in range(attempts):
+        have = seg.stat().st_size if seg.exists() else 0
+        if have >= length:
+            return
+        req = urllib.request.Request(
+            url, headers={"User-Agent": USER_AGENT, "Range": f"bytes={start + have}-{end}"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 206:
+                    raise _RangeIgnored
+                with open(seg, "ab") as f:
+                    while True:
+                        try:
+                            block = resp.read(CHUNK)
+                        except http.client.IncompleteRead as exc:
+                            f.write(exc.partial)
+                            raise
+                        if not block:
+                            break
+                        f.write(block)
+        except _RangeIgnored:
+            raise
+        except urllib.error.HTTPError as exc:
+            if 400 <= exc.code < 500 and exc.code not in (408, 429):
+                raise DownloadError(f"range download failed for {url}: {exc}") from exc
+        except (urllib.error.URLError, OSError, http.client.HTTPException):
+            pass
+        if attempt + 1 < attempts and (not seg.exists() or seg.stat().st_size < length):
+            time.sleep(retry_wait)
+    got = seg.stat().st_size if seg.exists() else 0
+    if got < length:
+        raise DownloadError(f"segment {start}-{end}: {got} of {length} bytes after retries")
+
+
+def _download_segmented(url: str, part: Path, size: int, connections: int, *, timeout: float,
+                        attempts: int, retry_wait: float) -> bool:
+    """Fill `part` up to `size` bytes with parallel range requests. False if Range is ignored."""
+    done = part.stat().st_size if part.exists() else 0
+    if done > size:
+        part.unlink()
+        done = 0
+    remaining = size - done
+    if remaining <= 0:
+        return True
+    n = max(1, min(connections, remaining // MIN_SEGMENT or 1))
+    bounds = [done + remaining * k // n for k in range(n + 1)]
+    segs = [part.with_name(f"{part.name}.seg{k}") for k in range(n)]
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        futures = [
+            pool.submit(_fetch_range, url, segs[k], bounds[k], bounds[k + 1] - 1,
+                        timeout=timeout, attempts=attempts, retry_wait=retry_wait)
+            for k in range(n)
+        ]
+        try:
+            for fut in futures:
+                fut.result()
+        except _RangeIgnored:
+            for s in segs:
+                s.unlink(missing_ok=True)
+            return False
+    with open(part, "ab") as out:
+        for s in segs:
+            with open(s, "rb") as f:
+                shutil.copyfileobj(f, out, CHUNK)
+            s.unlink()
+    return True
+
+
 def download(
     url: str, dest: str | Path, *, size: int | None = None, md5: str | None = None,
-    timeout: float = 60.0, attempts: int = 8, retry_wait: float = 5.0,
+    timeout: float = 60.0, attempts: int = 8, retry_wait: float = 5.0, connections: int = 1,
 ) -> Path:
     """Download url to dest via dest.part, resuming dropped connections; verify size and md5.
 
@@ -68,10 +148,21 @@ def download(
     wrong md5, is corrupt and removed.
     """
     dest = Path(dest)
+    if connections > 1 and size is None:
+        raise ValueError("a multi-connection download needs the file size")
     if dest.exists() and (size is not None or md5) and _verify(dest, size, md5) is None:
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
+    if connections > 1 and _download_segmented(
+        url, part, size, connections, timeout=timeout, attempts=attempts, retry_wait=retry_wait
+    ):
+        problem = _verify(part, size, md5)
+        if problem:
+            part.unlink(missing_ok=True)
+            raise DownloadError(f"{dest.name}: {problem}; corrupt partial file removed")
+        part.replace(dest)
+        return dest
     last_error = "no attempt made"
     for attempt in range(attempts):
         failed = False
@@ -115,7 +206,8 @@ def tier_dir(data_root: str | Path, entry: dict) -> Path:
 
 
 def fetch_dataset_files(
-    entry: dict, data_root: str | Path, *, names: list[str] | None = None
+    entry: dict, data_root: str | Path, *, names: list[str] | None = None,
+    connections: int = 1,
 ) -> list[Path]:
     """Download a register entry's files (all, or the named ones) into its tier directory."""
     if entry.get("availability") == "blocked":
@@ -130,6 +222,7 @@ def fetch_dataset_files(
         raise DownloadError(f"{entry['id']}: no downloadable files listed in the register")
     target = tier_dir(data_root, entry)
     return [
-        download(f["url"], target / f["name"], size=f.get("size"), md5=f.get("md5"))
+        download(f["url"], target / f["name"], size=f.get("size"), md5=f.get("md5"),
+                 connections=connections if f.get("size") else 1)
         for f in files
     ]
