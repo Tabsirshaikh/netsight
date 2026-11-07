@@ -231,3 +231,61 @@ def test_help_documents_exit_codes(capsys):
     assert exc.value.code == 0
     out = capsys.readouterr().out
     assert "exit codes" in out.lower() and "licence findings" in out and "bad input" in out
+
+
+def _local_dr(data_root, survey, pages):
+    from helpers.tiny_pdf import write_text_pdf
+
+    dr = data_root / "raw" / "noaa" / survey / "DR"
+    dr.mkdir(parents=True)
+    write_text_pdf(dr / f"{survey}_DR.pdf", pages)
+
+
+def test_noaa_contacts_from_local_dr(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    row = "227-034244S H33-I-E 12.133 28-48-19.481 91-16-40.857 Disproved"
+    _local_dr(tmp_path, "H99999", [["Number of items investigated 1"], [row]])
+    _local_dr(tmp_path, "H99998", [["Nothing tabulated here."]])
+    out, summ = tmp_path / "c.csv", tmp_path / "s.csv"
+    rc = main(["noaa", "contacts", "H99999", "h99998", "--no-fetch",
+               "--out", str(out), "--summary", str(summ)])
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "H99999: 1 contact rows" in text and "H99998: 0 contact rows" in text
+    assert "surveys with usable contact rows: 1 of 2" in text
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2 and "227-034244S" in lines[1]
+    summary = summ.read_text(encoding="utf-8").splitlines()
+    assert summary[0].startswith("survey_id,pages,items_investigated")
+    assert len(summary) == 3
+
+
+def test_noaa_contacts_missing_dr_exits_2(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    rc = main(["noaa", "contacts", "H99999", "--no-fetch", "--out", str(tmp_path / "c.csv")])
+    assert rc == 2
+    assert "no Descriptive Report PDF" in capsys.readouterr().err
+
+
+def test_noaa_fetch_rejects_bad_id(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    assert main(["noaa", "fetch", "X123"]) == 2
+    assert "not an H-survey id" in capsys.readouterr().err
+
+
+def test_data_fetch_unknown_id_exits_2(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    assert main(["data", "fetch", "no_such_dataset"]) == 2
+    assert "unknown dataset id" in capsys.readouterr().err
+
+
+def test_data_fetch_refuses_blocked_dataset(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    reg = tmp_path / "reg.yaml"
+    reg.write_text(
+        "datasets:\n  - id: b\n    tier: research_only\n    licence_status: unclear\n"
+        "    availability: blocked\n    files: []\n",
+        encoding="utf-8",
+    )
+    assert main(["data", "fetch", "b", "--register", str(reg)]) == 2
+    assert "blocked" in capsys.readouterr().err
