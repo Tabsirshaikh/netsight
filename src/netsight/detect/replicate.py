@@ -97,6 +97,7 @@ def train_and_test(split: dict, *, epochs: int, out: Path, seed: int, tile: int 
             if val["ap50"] > best:
                 best = val["ap50"]
                 model.save_pretrained(out / "model")
+                processor.save_pretrained(out / "model")
         history.append(row)
         (out / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
     from transformers import DFineForObjectDetection

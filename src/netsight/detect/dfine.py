@@ -76,7 +76,10 @@ def to_pixels(crops: Sequence[np.ndarray], size: int = NET_INPUT) -> torch.Tenso
     """
     out = []
     for c in crops:
-        t = torch.from_numpy(np.ascontiguousarray(c)).float().div_(255.0)[None, None]
+        a = np.ascontiguousarray(c)
+        if not a.flags.writeable:  # memory-mapped cache pages are read-only
+            a = a.copy()
+        t = torch.from_numpy(a).float().div_(255.0)[None, None]
         t = torch.nn.functional.interpolate(t, size=(size, size), mode="bilinear",
                                             align_corners=False, antialias=True)
         out.append(t[0].expand(3, -1, -1))

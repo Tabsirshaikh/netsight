@@ -74,3 +74,43 @@ def test_bad_arguments():
         build_train_tiles([], 0, rng=np.random.default_rng(0))
     with pytest.raises(ValueError):
         build_train_tiles([], 100, neg_ratio=-1, rng=np.random.default_rng(0))
+
+
+def _ds(dataset_id, n, w=400):
+    return [DetectionSample(dataset_id, "z.zip", f"{dataset_id}{i}.jpg", w, 100,
+                            np.array([[10.0, 10.0, 40.0, 40.0]]), ["o"], "g")
+            for i in range(n)]
+
+
+def test_balanced_tiles_gives_small_datasets_a_minimum_share():
+    from netsight.detect.training_tiles import balanced_tiles
+
+    samples = _ds("big", 200) + _ds("small", 10)
+    tiles = balanced_tiles(samples, 100, neg_ratio=0.0, max_tiles=400, seed=0, min_share=0.15,
+                           max_repeat=4)
+    by = {"big": 0, "small": 0}
+    for t in tiles:
+        by[samples[t.sample_index].dataset_id] += 1
+    assert by["big"] == 200  # capped at max_tiles // 2 datasets
+    # small has 10 positive tiles; 15% share needs ~36 -> repeated, capped at 4x = 40
+    assert 30 <= by["small"] <= 40
+    assert by["small"] / len(tiles) >= 0.14
+
+
+def test_balanced_tiles_repeat_is_capped():
+    from netsight.detect.training_tiles import balanced_tiles
+
+    samples = _ds("big", 400) + _ds("tiny", 2)
+    tiles = balanced_tiles(samples, 100, neg_ratio=0.0, max_tiles=800, seed=0, min_share=0.5,
+                           max_repeat=3)
+    assert sum(1 for t in tiles if samples[t.sample_index].dataset_id == "tiny") == 6
+
+
+def test_early_stopper_waits_for_patience():
+    from netsight.detect.training_tiles import EarlyStopper
+
+    stop = EarlyStopper(patience=2)
+    assert stop.update(0.30) is False and stop.best == 0.30
+    assert stop.update(0.35) is False and stop.best == 0.35  # improvement resets the count
+    assert stop.update(0.34) is False                        # 1 without improvement
+    assert stop.update(0.33) is True                         # 2 -> stop

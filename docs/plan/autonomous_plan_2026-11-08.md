@@ -77,3 +77,7 @@ End with a progress summary for the user.
   "mAP of 75%" on its 1,170 images) -> pipeline competitive; random held-out images 0.528;
   held-out survey years ~0.2 (final "years" run pending). Decision: GO, continue to v0.2.
   Minor: replicate.py does not save the image processor; to fix.
+- 04:30 Replication complete: training images 0.721 / random held-out 0.528 / held-out years
+  0.209 (docs/research/step2/replication.md). Phase B code done: shared balanced_tiles with a
+  minimum share (0.15, max 4x repeat), EarlyStopper (patience 3 validations), val 250 images per
+  dataset, PixelCache in training, AP at IoU 0.3 reported. Next: train v0.2.

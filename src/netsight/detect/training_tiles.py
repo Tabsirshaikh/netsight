@@ -93,3 +93,58 @@ def build_train_tiles(
         n_neg = max_tiles - n_pos
     chosen = positives + _pick(negatives, n_neg, rng)
     return sorted(chosen, key=lambda t: (t.sample_index, t.tile.y0, t.tile.x0))
+
+
+def balanced_tiles(
+    samples: Sequence[DetectionSample],
+    tile_px: int,
+    *,
+    neg_ratio: float,
+    max_tiles: int,
+    seed: int,
+    min_share: float = 0.0,
+    max_repeat: int = 1,
+) -> list[TrainTile]:
+    """Equal tile budget per dataset, plus a floor so a small dataset is not drowned out.
+
+    Each dataset gets at most ``max_tiles // n_datasets`` tiles. A dataset whose tiles would be
+    less than ``min_share`` of the epoch is repeated (up to ``max_repeat`` times its own tiles;
+    each copy gets new augmentation because augmentation is seeded per item index).
+    """
+    ids = sorted({s.dataset_id for s in samples})
+    per: dict[str, list[TrainTile]] = {}
+    for k, ds_id in enumerate(ids):
+        idx = [i for i, s in enumerate(samples) if s.dataset_id == ds_id]
+        tiles = build_train_tiles([samples[i] for i in idx], tile_px, neg_ratio=neg_ratio,
+                                  max_tiles=max_tiles // len(ids),
+                                  rng=np.random.default_rng(seed * 100 + k))
+        per[ds_id] = [TrainTile(idx[t.sample_index], t.tile, t.boxes) for t in tiles]
+    if 0.0 < min_share < 1.0 and max_repeat > 1:
+        total = sum(len(v) for v in per.values())
+        for ds_id, own in list(per.items()):
+            if not own:
+                continue
+            others = total - len(own)
+            need = -(-int(min_share * others * 1000) // int((1 - min_share) * 1000))
+            target = min(need, len(own) * max_repeat)
+            if target > len(own):
+                per[ds_id] = (own * (-(-target // len(own))))[:target]
+    return [t for ds_id in ids for t in per[ds_id]]
+
+
+class EarlyStopper:
+    """Stop when the validation score has not improved for ``patience`` evaluations."""
+
+    def __init__(self, patience: int, min_delta: float = 0.0) -> None:
+        if patience < 1:
+            raise ValueError("patience must be >= 1")
+        self.patience, self.min_delta = patience, min_delta
+        self.best = float("-inf")
+        self.bad = 0
+
+    def update(self, score: float) -> bool:
+        if score > self.best + self.min_delta:
+            self.best, self.bad = score, 0
+            return False
+        self.bad += 1
+        return self.bad >= self.patience

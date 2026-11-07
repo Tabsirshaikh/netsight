@@ -47,7 +47,8 @@ from netsight.detect.evaluation import (
     match_detections,
     recall_at_fp_per_image,
 )
-from netsight.detect.training_tiles import TrainTile, build_train_tiles
+from netsight.detect.pixel_cache import PixelCache
+from netsight.detect.training_tiles import EarlyStopper, balanced_tiles  # noqa: F401 (re-export)
 from netsight.governance.licences import default_register_path, load_register
 from netsight.models.manifest import build_training_manifest, write_manifest
 from netsight.trust.provenance import Ledger
@@ -99,20 +100,6 @@ def build_splits(root: Path) -> dict:
     }
 
 
-def balanced_tiles(samples, tile_px: int, *, neg_ratio: float, max_tiles: int, seed: int):
-    """Equal tile budget per dataset, so a large dataset cannot drown a small one."""
-    ids = sorted({s.dataset_id for s in samples})
-    out = []
-    for k, ds_id in enumerate(ids):
-        idx = [i for i, s in enumerate(samples) if s.dataset_id == ds_id]
-        sub = [samples[i] for i in idx]
-        tiles = build_train_tiles(sub, tile_px, neg_ratio=neg_ratio,
-                                  max_tiles=max_tiles // len(ids),
-                                  rng=np.random.default_rng(seed * 100 + k))
-        out += [TrainTile(idx[t.sample_index], t.tile, t.boxes) for t in tiles]
-    return out
-
-
 def subsample(samples, n: int, rng: np.random.Generator):
     """Up to n images, half with objects, for quick validation during training."""
     pos = [s for s in samples if len(s.boxes)]
@@ -132,10 +119,12 @@ def evaluate(model, processor, samples, tile_px: int, cache: ImageCache, device:
         preds.append((boxes, scores))
         gts.append(s.boxes)
     m = match_detections(preds, gts)
+    loose = match_detections(preds, gts, iou_threshold=0.3)  # elongated objects: ambiguous extent
     return {
         "n_images": len(samples),
         "n_objects": int(m.n_gt),
         "ap50": average_precision(m),
+        "ap30": average_precision(loose),
         "ap50_small": average_precision(m, size_range=AREA_SMALL),
         "recall_at_0.5_fp_per_image": recall_at_fp_per_image(m, 0.5)[0],
         "recall_at_1_fp_per_image": recall_at_fp_per_image(m, 1.0)[0],
@@ -160,7 +149,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--neg-ratio", type=float, default=0.5)
-    ap.add_argument("--val-images", type=int, default=120, help="per dataset, per evaluation")
+    ap.add_argument("--val-images", type=int, default=250, help="per dataset, per evaluation")
+    ap.add_argument("--patience", type=int, default=3,
+                    help="stop after this many validations without improvement (0: never)")
+    ap.add_argument("--min-share", type=float, default=0.15,
+                    help="minimum share of each epoch's tiles per dataset")
+    ap.add_argument("--max-repeat", type=int, default=4,
+                    help="max times a small dataset's tiles are repeated to reach --min-share")
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
@@ -188,22 +183,26 @@ def main(argv: list[str] | None = None) -> int:
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
     model, processor = load_model(args.checkpoint)
     model.to(device)
-    cache = ImageCache(max_images=2048)
+    pixel_dir = data_dir() / "cache" / "pixels"
+    use_pixels = (pixel_dir / "index.json").exists()  # decoded once: no per-tile decoding
+    cache = PixelCache(pixel_dir) if use_pixels else ImageCache(max_images=2048)
     opt = make_optimizer(model, args.lr)
+    share = {"min_share": args.min_share, "max_repeat": args.max_repeat}
     # size the LR schedule from the tiles actually available, not from the --max-tiles cap
     n_tiles = len(balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
-                                 max_tiles=args.max_tiles, seed=args.seed))
+                                 max_tiles=args.max_tiles, seed=args.seed, **share))
     steps_per_epoch = max(1, n_tiles // args.batch)
     total = steps_per_epoch * args.epochs
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10)))
     log = open(out / "train_log.jsonl", "a", encoding="utf-8")
     best, history, step = -1.0, [], 0
+    stopper = EarlyStopper(args.patience) if args.patience > 0 else None
     for epoch in range(args.epochs):
         tiles = balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
-                               max_tiles=args.max_tiles, seed=args.seed + epoch)
+                               max_tiles=args.max_tiles, seed=args.seed + epoch, **share)
         ds = TileDataset(splits["train"], tiles, augment=True, seed=args.seed + epoch,
-                         cache=ImageCache(max_images=256))
+                         cache=PixelCache(pixel_dir) if use_pixels else ImageCache(256))
         loader = DataLoader(ds, batch_size=args.batch, shuffle=True, collate_fn=collate,
                             num_workers=args.workers, pin_memory=device == "cuda",
                             prefetch_factor=4 if args.workers else None,
@@ -248,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
             best = score
             model.save_pretrained(out / "model")
             processor.save_pretrained(out / "model")
+        if stopper is not None and stopper.update(score):
+            log.write(json.dumps({"early_stop_epoch": epoch, "best_val_mean_ap50": best}) + "\n")
+            log.flush()
+            break
     from transformers import DFineForObjectDetection
 
     model = DFineForObjectDetection.from_pretrained(out / "model").to(device)
