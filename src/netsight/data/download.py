@@ -65,9 +65,14 @@ class _RangeIgnored(Exception):
 
 def _fetch_range(url: str, seg: Path, start: int, end: int, *, timeout: float, attempts: int,
                  retry_wait: float) -> None:
-    """Download bytes start..end (inclusive) into seg, resuming within the range on drops."""
+    """Download bytes start..end (inclusive) into seg, resuming within the range on drops.
+
+    Only attempts that deliver no new bytes count towards `attempts`: a slow, flaky link keeps
+    going while it makes progress; a dead one stops. Waits grow while stalled (max 60 s).
+    """
     length = end - start + 1
-    for attempt in range(attempts):
+    stalled = 0
+    while stalled < attempts:
         have = seg.stat().st_size if seg.exists() else 0
         if have >= length:
             return
@@ -95,8 +100,12 @@ def _fetch_range(url: str, seg: Path, start: int, end: int, *, timeout: float, a
                 raise DownloadError(f"range download failed for {url}: {exc}") from exc
         except (urllib.error.URLError, OSError, http.client.HTTPException):
             pass
-        if attempt + 1 < attempts and (not seg.exists() or seg.stat().st_size < length):
-            time.sleep(retry_wait)
+        now = seg.stat().st_size if seg.exists() else 0
+        if now >= length:
+            return
+        stalled = 0 if now > have else stalled + 1
+        if stalled and stalled < attempts:
+            time.sleep(min(retry_wait * 2 ** (stalled - 1), 60.0))
     got = seg.stat().st_size if seg.exists() else 0
     if got < length:
         raise DownloadError(f"segment {start}-{end}: {got} of {length} bytes after retries")

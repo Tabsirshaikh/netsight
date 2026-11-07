@@ -215,3 +215,12 @@ def test_segmented_download_falls_back_when_range_is_ignored(server, tmp_path):
 def test_segmented_download_needs_a_known_size(server, tmp_path):
     with pytest.raises(ValueError):
         download(f"{server}/data.bin", tmp_path / "d.bin", connections=4)
+
+
+def test_segments_keep_going_while_each_attempt_makes_progress(server, tmp_path):
+    # every request is cut short, but each one delivers new bytes: a slow, flaky link
+    RangeHandler.faults = {"/data.bin": [40, "short"]}
+    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
+                   md5=hashlib.md5(PAYLOAD).hexdigest(), connections=2, attempts=3,
+                   retry_wait=0)
+    assert out.read_bytes() == PAYLOAD
