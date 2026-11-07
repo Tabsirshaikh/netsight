@@ -73,3 +73,7 @@ End with a progress summary for the user.
 ## Progress log
 
 - 03:45 plan written; replication and survey running.
+- 04:05 Replication (mine set, one recipe): scored on its own training images 0.721 AP50 (paper:
+  "mAP of 75%" on its 1,170 images) -> pipeline competitive; random held-out images 0.528;
+  held-out survey years ~0.2 (final "years" run pending). Decision: GO, continue to v0.2.
+  Minor: replicate.py does not save the image processor; to fix.
