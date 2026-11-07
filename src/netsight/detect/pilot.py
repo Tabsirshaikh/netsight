@@ -132,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.backends.cudnn.benchmark = True  # fixed 640x640 input: pick the fastest conv kernels
+    torch.set_float32_matmul_precision("high")  # TF32 for the ops autocast leaves in fp32
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     splits = build_splits(data_dir())
