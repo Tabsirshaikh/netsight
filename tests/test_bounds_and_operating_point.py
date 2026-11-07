@@ -11,7 +11,6 @@ from netsight.trust.bounds import (
 )
 from netsight.trust.operating_point import select_operating_point
 
-
 # --- exact binomial / Poisson bounds -------------------------------------------------------
 
 
