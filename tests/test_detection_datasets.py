@@ -112,3 +112,42 @@ def test_read_yolo_zip_with_separate_labels_folder(tmp_path):
     (s,) = read_yolo_zip([z], "aquascan_1k", ["Human"])
     np.testing.assert_allclose(s.boxes, [[90, 40, 110, 60]])
     assert s.labels == ["Human"]
+
+
+def _pgm(w, h) -> bytes:
+    buf = io.BytesIO()
+    Image.new("L", (w, h), 90).save(buf, format="PPM")  # greyscale -> binary PGM ("P5")
+    return buf.getvalue()
+
+
+def test_image_size_netpbm():
+    assert image_size(_pgm(250, 50)) == (250, 50)
+    assert image_size(b"P5\n# comment\n640 480\n255\n" + bytes(10)) == (640, 480)
+
+
+def test_read_coco_zip_groups_twin_frequencies_together(tmp_path):
+    from netsight.datasets.detection import read_coco_zip, subpipe_group
+
+    z = tmp_path / "sp.zip"
+    base = "SubPipeMiniSSS/DATA"
+    with zipfile.ZipFile(z, "w") as f:
+        for band, w in (("HF", 500), ("LF", 250)):
+            coco = {
+                "images": [{"id": 1, "file_name": "1693569954.939.pbm", "width": w, "height": 50},
+                           {"id": 2, "file_name": "1693570100.000.pbm", "width": w, "height": 50}],
+                "annotations": [{"id": 1, "image_id": 1, "category_id": 1,
+                                 "bbox": [10, 5, 20, 40]}],
+                "categories": [{"id": 1, "name": "Pipeline"}],
+            }
+            f.writestr(f"{base}/SSS_{band}_images/COCO_Annotation/coco_format.json",
+                       json.dumps(coco))
+            for im in coco["images"]:
+                f.writestr(f"{base}/SSS_{band}_images/Image/{im['file_name']}", _pgm(w, 50))
+    samples = read_coco_zip(z, "subpipe_mini2", group_fn=subpipe_group)
+    assert len(samples) == 4
+    first = [s for s in samples if s.member.endswith("1693569954.939.pbm")]
+    assert {s.group for s in first} == {subpipe_group("1693569954.939.pbm")}  # HF + LF twins
+    with_box = [s for s in samples if len(s.boxes)]
+    np.testing.assert_allclose(with_box[0].boxes, [[10, 5, 30, 45]])
+    assert with_box[0].labels == ["Pipeline"] and with_box[0].extra["band"] in ("HF", "LF")
+    assert subpipe_group("1693569954.939.pbm") != subpipe_group("1693570100.000.pbm")

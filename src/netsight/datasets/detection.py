@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 
-IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".pbm", ".pgm")
 _SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
 
 
@@ -37,10 +37,22 @@ class DetectionSample:
     extra: dict = field(default_factory=dict)
 
 
+def _netpbm_size(data: bytes) -> tuple[int, int]:
+    """Width and height from a PBM/PGM/PPM header (magic, width, height; '#' comments)."""
+    tokens: list[bytes] = []
+    for line in data[:512].split(b"\n"):
+        tokens += line.split(b"#", 1)[0].split()
+        if len(tokens) >= 3:
+            return int(tokens[1]), int(tokens[2])
+    raise ValueError("truncated netpbm header")
+
+
 def image_size(data: bytes) -> tuple[int, int]:
-    """(width, height) from a JPEG or PNG header without decoding the image."""
+    """(width, height) from a JPEG, PNG or netpbm header without decoding the image."""
     if data[:8] == b"\x89PNG\r\n\x1a\n":
         return struct.unpack(">II", data[16:24])
+    if data[:1] == b"P" and data[1:2] in b"123456" and len(data) > 2:
+        return _netpbm_size(data)
     if data[:2] != b"\xff\xd8":
         raise ValueError("not a JPEG or PNG image")
     i = 2
@@ -140,6 +152,58 @@ def read_ghostvision_zip(zip_path: str | Path, *, dataset_id: str = "ghostvision
                     width=w, height=h, boxes=_xywh_to_xyxy(objs.get("bbox") or []),
                     labels=list(objs.get("category") or []),
                     group=ghostvision_group(row["file_name"]), source_split=split,
+                ))
+    return samples
+
+
+_BAND = re.compile(r"SSS_([A-Z]+)_images")
+
+
+def subpipe_group(file_name: str, *, window_s: float = 60.0) -> str:
+    """SubPipe file names are Unix times of the ping block; consecutive waterfalls overlap, so
+    group by time window. The same name exists at both frequencies, and lands in one group."""
+    stem = PurePosixPath(file_name).stem
+    try:
+        return f"t{int(float(stem) // window_s)}"
+    except ValueError:
+        return "unknown"
+
+
+def read_coco_zip(
+    zip_path: str | Path, dataset_id: str, *, group_fn: Callable[[str], str] | None = None
+) -> list[DetectionSample]:
+    """Every COCO json in the zip; images are read from the sibling 'Image' folder.
+
+    Image sizes from the json are checked against the real image header.
+    """
+    zip_path = Path(zip_path)
+    samples = []
+    with zipfile.ZipFile(zip_path) as z:
+        members = set(z.namelist())
+        for meta in sorted(n for n in members if n.endswith(".json") and "COCO" in n):
+            coco = json.loads(z.read(meta))
+            root = meta.rsplit("/", 2)[0]
+            band_match = _BAND.search(meta)
+            band = band_match.group(1) if band_match else None
+            cats = {c["id"]: c["name"] for c in coco.get("categories", [])}
+            per_image: dict[int, list] = {}
+            for a in coco.get("annotations", []):
+                per_image.setdefault(a["image_id"], []).append(a)
+            for im in coco.get("images", []):
+                member = f"{root}/Image/{im['file_name']}"
+                if member not in members:
+                    continue
+                w, h = image_size(z.read(member))
+                if (w, h) != (im["width"], im["height"]):
+                    raise ValueError(f"{member}: header {w}x{h} != json {im['width']}x"
+                                     f"{im['height']}")
+                anns = per_image.get(im["id"], [])
+                samples.append(DetectionSample(
+                    dataset_id=dataset_id, zip_path=str(zip_path), member=member, width=w,
+                    height=h, boxes=_xywh_to_xyxy([a["bbox"] for a in anns]),
+                    labels=[cats[a["category_id"]] for a in anns],
+                    group=group_fn(im["file_name"]) if group_fn else zip_path.stem,
+                    extra={"band": band} if band else {},
                 ))
     return samples
 
