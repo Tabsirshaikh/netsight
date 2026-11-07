@@ -81,3 +81,7 @@ End with a progress summary for the user.
   0.209 (docs/research/step2/replication.md). Phase B code done: shared balanced_tiles with a
   minimum share (0.15, max 4x repeat), EarlyStopper (patience 3 validations), val 250 images per
   dataset, PixelCache in training, AP at IoU 0.3 reported. Next: train v0.2.
+- 05:10 Phase A done. Literature survey: 21 quote-verified papers (docs/research/step2/
+  literature_pipelines.md); every split found is a random/ratio image split, none held-out.
+  v0.2 training started (5 datasets, ~14 tiles/s, ~10 min/epoch, early stopping).
+  Phase C side task: detector -> trust-layer calibration module delegated to GPT-6.1-sol.
