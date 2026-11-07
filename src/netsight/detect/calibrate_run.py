@@ -68,6 +68,7 @@ def dump(
     limit: int | None,
     views: str = "none",
     merge: str = "wbf",
+    splits_to_run: tuple[str, ...] = ("val", "test"),
 ) -> None:
     import torch
     from transformers import AutoImageProcessor, DFineForObjectDetection
@@ -96,7 +97,7 @@ def dump(
         "sets": {},
     }
     with torch.inference_mode():
-        for split in ("val", "test"):
+        for split in splits_to_run:
             for name, samples in splits[split].items():
                 samples = samples[:limit] if limit else samples
                 if not samples:
@@ -209,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--limit", type=int, help="images per set (smoke test)")
     d.add_argument("--tta", choices=["none", "hflip", "hvflip"], default="none")
     d.add_argument("--merge", choices=["wbf", "nms"], default="wbf")
+    d.add_argument("--splits", default="val,test", help="comma list of val,test")
     a = sub.add_parser("ap", help="detection metrics of a dump, per set")
     a.add_argument("--preds", type=Path, required=True)
     r = sub.add_parser("report")
@@ -218,7 +220,15 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--min-score", type=float, default=0.05)
     args = ap.parse_args(argv)
     if args.cmd == "dump":
-        dump(args.model, args.out, args.tile, args.limit, args.tta, args.merge)
+        dump(
+            args.model,
+            args.out,
+            args.tile,
+            args.limit,
+            args.tta,
+            args.merge,
+            tuple(args.splits.split(",")),
+        )
     elif args.cmd == "ap":
         for key, row in detection_metrics(args.preds).items():
             print(key, {k: round(v, 4) for k, v in row.items()})
