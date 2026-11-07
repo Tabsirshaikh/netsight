@@ -26,7 +26,7 @@ from netsight.trust.detector_calibration import (
 )
 
 
-def save_predictions(path: Path, preds, gts) -> None:
+def save_predictions(path: Path, preds, gts, groups=None) -> None:
     """One .npz per set: concatenated boxes with the image index of each row."""
 
     def stack(rows, width):
@@ -48,7 +48,31 @@ def save_predictions(path: Path, preds, gts) -> None:
         gt=gt,
         gt_image=gidx,
         n_images=np.int64(len(gts)),
+        groups=np.array([str(g) for g in groups] if groups is not None else [""] * len(gts)),
     )
+
+
+def load_groups(path: Path) -> np.ndarray:
+    """Survey/recording group of each image ("" if the dump predates groups)."""
+    z = np.load(path)
+    return z["groups"] if "groups" in z else np.array([""] * int(z["n_images"]))
+
+
+def add_groups(pred_dir: Path) -> None:
+    """Backfill image groups into dumps made before groups were saved (same sample order)."""
+    from netsight.config import data_dir
+    from netsight.detect.pilot import build_splits
+
+    splits = build_splits(data_dir())
+    info = json.loads((pred_dir / "info.json").read_text(encoding="utf-8"))
+    for key, n in info["sets"].items():
+        split, name = key.split("_", 1)
+        samples = splits[split][name][:n]
+        z = dict(np.load(pred_dir / f"{key}.npz"))
+        if int(z["n_images"]) != len(samples):
+            raise ValueError(f"{key}: dump has {int(z['n_images'])} images, split {len(samples)}")
+        z["groups"] = np.array([str(s.group) for s in samples])
+        np.savez_compressed(pred_dir / f"{key}.npz", **z)
 
 
 def load_predictions(path: Path):
@@ -114,7 +138,12 @@ def dump(
                     )
                     for s in samples
                 ]
-                save_predictions(out / f"{split}_{name}.npz", preds, [s.boxes for s in samples])
+                save_predictions(
+                    out / f"{split}_{name}.npz",
+                    preds,
+                    [s.boxes for s in samples],
+                    [s.group for s in samples],
+                )
                 info["sets"][f"{split}_{name}"] = len(samples)
                 print(split, name, len(samples), flush=True)
     (out / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")

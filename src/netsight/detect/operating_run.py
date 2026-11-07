@@ -159,3 +159,73 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def group_sets(pred_dir: Path, prefix: str) -> dict:
+    """Matched (scores, real, n_gt, n_images) per (set, group): one unit per survey/recording."""
+    from netsight.detect.calibrate_run import load_groups
+
+    info = json.loads((pred_dir / "info.json").read_text(encoding="utf-8"))
+    out = {}
+    for key in info["sets"]:
+        if not key.startswith(prefix):
+            continue
+        preds, gts = load_predictions(pred_dir / f"{key}.npz")
+        groups = load_groups(pred_dir / f"{key}.npz")
+        for g in sorted(set(groups.tolist())):
+            idx = np.flatnonzero(groups == g)
+            m = match_detections([preds[i] for i in idx], [gts[i] for i in idx])
+            out[(key[len(prefix) :], g)] = (
+                np.asarray(m.scores, float),
+                np.asarray(m.is_tp, float),
+                int(m.n_gt),
+                len(idx),
+            )
+    return out
+
+
+def survey_max_threshold(groups: list[tuple], budget: float) -> float:
+    """Lowest threshold at which every calibration survey's FA rate is within budget.
+
+    Split-conformal at the survey level: if a new survey is exchangeable with the n
+    calibration surveys, P(its FA rate <= budget) >= n / (n + 1).
+    """
+    cands = np.unique(np.concatenate([g[0] for g in groups]))[::-1]
+
+    def worst(t: float) -> float:
+        return max(np.count_nonzero((g[0] >= t) & (g[1] == 0)) / g[3] for g in groups)
+
+    threshold = float("inf")
+    for t in cands:
+        if worst(float(t)) > budget:
+            break
+        threshold = float(t)
+    return threshold
+
+
+def survey_level_report(val_dir: Path, test_dir: Path, budgets: list[float]) -> str:
+    val, test = group_sets(val_dir, "val_"), group_sets(test_dir, "test_")
+    n = len(val)
+    lines = [
+        f"Survey-level bound: {n} validation surveys -> guaranteed coverage "
+        f"{n}/{n + 1} = {n / (n + 1):.0%} for an exchangeable new survey.",
+        "",
+        "| Budget FA/image | Threshold | Test surveys within budget | Pooled test recall |",
+        "|---|---|---|---|",
+    ]
+    for b in budgets:
+        t = survey_max_threshold(list(val.values()), b)
+        ok = [check(g, t)["fa_per_image"] <= b for g in test.values()]
+        tp = sum(check(g, t)["tp"] for g in test.values())
+        n_gt = sum(g[2] for g in test.values())
+        lines.append(f"| {b} | {t:.3f} | {sum(ok)}/{len(ok)} | {tp / n_gt:.3f} |")
+    detail = [
+        "",
+        "| Test survey | " + " | ".join(f"FA/img @ {b}" for b in budgets) + " |",
+        "|---|" + "---|" * len(budgets),
+    ]
+    ts = [survey_max_threshold(list(val.values()), b) for b in budgets]
+    for (name, g), grp in sorted(test.items()):
+        cells = [f"{check(grp, t)['fa_per_image']:.2f}" for t in ts]
+        detail.append(f"| {name}/{g} | " + " | ".join(cells) + " |")
+    return "\n".join(lines + detail) + "\n"
