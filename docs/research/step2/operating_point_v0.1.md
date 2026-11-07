@@ -24,6 +24,40 @@ every object, including ones never detected.
 Next: survey-cluster bounds (negative-binomial or cluster bootstrap) for the frozen threshold,
 so the validation route states an honest, wider bound; repeat on v0.2.
 
+## Survey-level conformal threshold (second route tried)
+
+Threshold = lowest score at which **every** validation survey stays within budget (split-conformal
+over surveys: coverage n/(n+1) if a new survey is exchangeable with them).
+
+Survey-level bound: 8 validation surveys -> guaranteed coverage 8/9 = 89% for an exchangeable new survey.
+
+| Budget FA/image | Threshold | Test surveys within budget | Pooled test recall |
+|---|---|---|---|
+| 0.5 | 0.756 | 11/12 | 0.038 |
+| 1.0 | 0.466 | 8/12 | 0.306 |
+
+| Test survey | FA/img @ 0.5 | FA/img @ 1.0 |
+|---|---|---|
+| aquascan/13SEP25 | 0.14 | 0.92 |
+| aquascan/2025-11-23 | 0.05 | 1.18 |
+| ghostvision/Rec14 | 0.00 | 1.23 |
+| ghostvision/Rec8 | 0.01 | 0.73 |
+| ghostvision/Rec9 | 0.00 | 0.89 |
+| ghostvision_shift/Contact | 0.00 | 0.43 |
+| mine/2015 | 0.17 | 2.72 |
+| mine/2021 | 0.04 | 0.85 |
+| sctd/test | 0.05 | 0.37 |
+| subpipe/t28226170 | 1.00 | 2.03 |
+| subpipe/t28226222 | 0.00 | 0.31 |
+| subpipe/t28226223 | 0.00 | 0.00 |
+
+It does not rescue the frozen route: at 0.5 FA/image it holds 11/12 but recall collapses to 0.04
+(the worst validation survey sets the threshold); at 1.0 only 8/12 = 67% of test surveys stay in
+budget, below the 89% the method promises. New surveys are not exchangeable with 8 calibration
+surveys from other sites and sensors. With the data we have, **the label-free count threshold is
+the only route that held the budget on every held-out survey.** (SubPipe false alarms are inflated
+by its label convention at IoU 0.5.)
+
 ## Full table
 
 | Test set | Fitted on | Budget FA/image | Threshold | Test FA/image | Budget held | Test recall | 95% CI |
