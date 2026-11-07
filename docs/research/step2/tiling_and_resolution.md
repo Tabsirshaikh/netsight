@@ -65,7 +65,7 @@ Findings:
 - Most mine targets and all GhostVision validation targets are below the 32 px goal at stored
   size. Shrinking whole images to 640 would make it worse; tiles enlarged ~2x (320 -> 640) bring
   the 1024 px mine targets to a ~54 px median and GhostVision train to ~78 px.
-- GhostVision's published test split shares recordings with train (Rec14, TI, baycove: 89 of
+- GhostVision's published test split shares recordings with train (Rec14, Rec8, baycove, TI: 165 of
   398 test images), so it is re-split by recording for honest evaluation. Its validation split
   has targets 2.5x smaller than train: a harder, differently distributed set.
 - The mine set's 416 px and 1024 px images are different images (no identical label file across

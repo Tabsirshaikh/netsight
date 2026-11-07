@@ -1,0 +1,153 @@
+"""Labelled detection datasets converted to one sample format.
+
+Boxes are always in ORIGINAL image pixels as [x0, y0, x1, y1]; tiling happens later in code, so
+a tile-size change never needs relabelling. Every sample carries a `group` (survey year,
+recording) so train/test splits keep whole groups apart: frames from one recording on both
+sides of a split inflate test scores.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import re
+import struct
+import zipfile
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+
+import numpy as np
+
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
+_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+@dataclass
+class DetectionSample:
+    dataset_id: str
+    zip_path: str
+    member: str
+    width: int
+    height: int
+    boxes: np.ndarray  # (n, 4) float, x0 y0 x1 y1 in original pixels
+    labels: list[str]
+    group: str
+    source_split: str | None = None
+    extra: dict = field(default_factory=dict)
+
+
+def image_size(data: bytes) -> tuple[int, int]:
+    """(width, height) from a JPEG or PNG header without decoding the image."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return struct.unpack(">II", data[16:24])
+    if data[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG or PNG image")
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in _SOF:
+            h, w = struct.unpack(">HH", data[i + 5 : i + 9])
+            return w, h
+        i += 2 + struct.unpack(">H", data[i + 2 : i + 4])[0]
+    raise ValueError("JPEG without a frame header")
+
+
+def load_image(sample: DetectionSample) -> np.ndarray:
+    """Greyscale uint8 image (sonar intensity) read from its zip member."""
+    from PIL import Image  # optional ML dependency, imported only when images are needed
+
+    with zipfile.ZipFile(sample.zip_path) as z:
+        data = z.read(sample.member)
+    return np.asarray(Image.open(io.BytesIO(data)).convert("L"), dtype=np.uint8)
+
+
+def _xywh_to_xyxy(b: Sequence[Sequence[float]]) -> np.ndarray:
+    a = np.asarray(b, dtype=float).reshape(-1, 4)
+    return np.column_stack([a[:, 0], a[:, 1], a[:, 0] + a[:, 2], a[:, 1] + a[:, 3]])
+
+
+def read_yolo_zip(
+    zip_paths: Iterable[str | Path],
+    dataset_id: str,
+    class_names: Sequence[str],
+    *,
+    group_fn: Callable[[str], str] | None = None,
+) -> list[DetectionSample]:
+    """YOLO txt labels (class xc yc w h, normalised) next to each image; group = zip stem."""
+    samples = []
+    for zp in zip_paths:
+        zp = Path(zp)
+        with zipfile.ZipFile(zp) as z:
+            members = set(z.namelist())
+            for name in sorted(members):
+                if not name.lower().endswith(IMAGE_SUFFIXES):
+                    continue
+                w, h = image_size(z.read(name))
+                label_name = str(PurePosixPath(name).with_suffix(".txt"))
+                text = z.read(label_name).decode() if label_name in members else ""
+                rows = np.array(text.split(), dtype=float).reshape(-1, 5) if text.strip() else (
+                    np.zeros((0, 5)))
+                if len(rows) and (rows[:, 0].max() >= len(class_names) or rows[:, 0].min() < 0):
+                    raise ValueError(f"{zp.name}:{label_name}: class index outside {class_names}")
+                xc, yc, bw, bh = rows[:, 1] * w, rows[:, 2] * h, rows[:, 3] * w, rows[:, 4] * h
+                boxes = np.column_stack([xc - bw / 2, yc - bh / 2, xc + bw / 2, yc + bh / 2])
+                stem = PurePosixPath(name).name
+                samples.append(DetectionSample(
+                    dataset_id=dataset_id, zip_path=str(zp), member=name, width=w, height=h,
+                    boxes=boxes.reshape(-1, 4),
+                    labels=[class_names[int(c)] for c in rows[:, 0]],
+                    group=group_fn(stem) if group_fn else zp.stem,
+                ))
+    return samples
+
+
+_GV_GROUP = re.compile(r"^(Rec)0*(\d+)|^([A-Za-z]+)")
+
+
+def ghostvision_group(file_name: str) -> str:
+    """Recording id from a GhostVision file name; 'Rec09' and 'Rec9' are the same recording."""
+    m = _GV_GROUP.match(file_name)
+    if not m:
+        return "unknown"
+    return f"Rec{int(m.group(2))}" if m.group(1) else m.group(3)
+
+
+def read_ghostvision_zip(zip_path: str | Path, *, dataset_id: str = "ghostvision_crabpot"):
+    """GhostVision v1.0.0: one metadata.jsonl per split with bbox [x, y, w, h] in pixels."""
+    zip_path = Path(zip_path)
+    samples = []
+    with zipfile.ZipFile(zip_path) as z:
+        for meta in sorted(n for n in z.namelist() if n.endswith("/metadata.jsonl")):
+            folder = meta.rsplit("/", 1)[0]
+            split = folder.rsplit("/", 1)[-1]
+            for line in z.read(meta).decode().splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                member = f"{folder}/{row['file_name']}"
+                w, h = image_size(z.read(member))
+                objs = row.get("objects") or {}
+                samples.append(DetectionSample(
+                    dataset_id=dataset_id, zip_path=str(zip_path), member=member,
+                    width=w, height=h, boxes=_xywh_to_xyxy(objs.get("bbox") or []),
+                    labels=list(objs.get("category") or []),
+                    group=ghostvision_group(row["file_name"]), source_split=split,
+                ))
+    return samples
+
+
+def group_split(
+    samples: Sequence[DetectionSample], *, test_groups: set[str], val_groups: set[str]
+) -> dict[str, list[DetectionSample]]:
+    """Split by whole groups; everything not named for test or validation is training."""
+    if test_groups & val_groups:
+        raise ValueError(f"groups in both test and validation: {sorted(test_groups & val_groups)}")
+    out: dict[str, list[DetectionSample]] = {"train": [], "val": [], "test": []}
+    for s in samples:
+        key = "test" if s.group in test_groups else "val" if s.group in val_groups else "train"
+        out[key].append(s)
+    return out
