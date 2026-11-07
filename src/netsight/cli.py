@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
 import sys
 from pathlib import Path
 
@@ -22,7 +24,29 @@ from netsight.governance.licences import (
 )
 from netsight.io import UnsupportedFormatError, open_survey
 from netsight.io.mosaic import Mosaic
+from netsight.io.xtf import UnsafeIndexFileError
 from netsight.normalise.swath import normalise_record
+
+EXIT_EPILOG = """exit codes:
+  0  ok
+  1  licence findings (register errors or forbidden dependencies)
+  2  bad input or processing error (message on stderr; use --debug for a traceback)
+"""
+
+
+def _finite_json(obj):
+    """Return obj with every non-finite float (nested in dicts/lists/tuples) replaced by None."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite_json(v) for v in obj]
+    return obj
+
+
+def _dumps(obj) -> str:
+    return json.dumps(_finite_json(obj), indent=2, default=str, allow_nan=False)
 
 
 def _summary(obj) -> dict:
@@ -56,7 +80,7 @@ def _summary(obj) -> dict:
 
 
 def _cmd_inspect(args) -> int:
-    print(json.dumps(_summary(open_survey(args.path)), indent=2, default=str))
+    print(_dumps(_summary(open_survey(args.path))))
     return 0
 
 
@@ -71,7 +95,7 @@ def _cmd_normalise(args) -> int:
     stem = Path(args.path).stem
     npz_path = swath.to_npz(out_dir / f"{stem}_swath.npz")
     meta_path = out_dir / f"{stem}_swath.json"
-    meta_path.write_text(json.dumps(swath.metadata(), indent=2, default=str), encoding="utf-8")
+    meta_path.write_text(_dumps(swath.metadata()), encoding="utf-8")
     print(meta_path)
     print(npz_path)
     return 0
@@ -95,7 +119,17 @@ def _cmd_licences(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="netsight", description="NetSight sonar assurance tools")
+    parser = argparse.ArgumentParser(
+        prog="netsight",
+        description="NetSight sonar assurance tools",
+        epilog=EXIT_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="show full tracebacks instead of error messages (or set NETSIGHT_DEBUG=1)",
+    )
     parser.add_argument("--version", action="version", version=f"netsight {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     p_inspect = sub.add_parser("inspect", help="summarise a survey file")
@@ -117,9 +151,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_lic.set_defaults(func=_cmd_licences)
     args = parser.parse_args(argv)
+    debug = args.debug or os.environ.get("NETSIGHT_DEBUG", "") not in ("", "0")
     try:
         return args.func(args)
-    except (UnsupportedFormatError, ValueError) as exc:
+    except (UnsupportedFormatError, ValueError, OSError, UnsafeIndexFileError) as exc:
+        if debug:
+            raise
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
