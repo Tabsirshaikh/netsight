@@ -1,0 +1,198 @@
+# NetSight dataset manifest - generated 2026-11-06 from research (see datasets_detail.md)
+# tier: commercial = permissive licence verified; conditional = share-alike/ambiguity/attribution notices;
+#       research_only = licence unknown or restrictive. Never build commercial artefacts from research_only.
+# availability (optional): available | blocked (cannot be fetched yet) | request (needs a request to the owner)
+datasets:
+  - id: bodine_substrate
+    title: "Sidescan Sonar Substrate, Depth, and Shadow Image-Label-Pairs"
+    source_url: https://zenodo.org/records/10119320
+    doi: 10.5281/zenodo.10119320
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - name: PINGMapperv2.0_SegmentationModelsv1.0_ImageLabelPairs.zip
+        url: https://zenodo.org/api/records/10119320/files/PINGMapperv2.0_SegmentationModelsv1.0_ImageLabelPairs.zip/content
+        size: 13769924043
+        md5: ecb454c2f1526bd3bfef6e6a6dc375d1
+    format: "8-bit greyscale PNG, 500 px wide, variable height; Humminbird Solix SSS"
+    labels: "PNG index masks; folders Bedpick/Shadow/Raw_Substrate/EGN_Substrate x images + labels|masks (31,014 PNG); class-id mapping UNVERIFIED"
+    notes: "Attribution required. Layout verified via zip central directory."
+
+  - id: ghostvision_crabpot
+    title: "Derelict Crab Pot Object Detection Dataset and Models for GhostVision v1.0.0"
+    source_url: https://zenodo.org/records/20056679
+    doi: 10.5281/zenodo.20056679
+    licence: "CC-BY-SA-4.0 (Zenodo, HF metadata) vs GPL (HF card body)"
+    licence_status: conflict
+    commercial_use: conditional
+    tier: conditional
+    availability: available
+    files:
+      - name: GhostVision_DatasetAndModels.zip
+        url: https://zenodo.org/api/records/20056679/files/GhostVision_DatasetAndModels.zip/content
+        size: 898783834
+        md5: 36872df7198d915e39db0d837f34655a
+    format: "640x640 JPEG (Roboflow exports), Humminbird consumer SSS, Delaware bays; train 5721 / valid 555 / test 398"
+    labels: "JSONL per split: file_name + objects{bbox [x,y,w,h] px, category, area}; classes Crab-Pot, Maybe-Crab-Pot"
+    notes: "HF mirror PINGEcosystem/sss-crab-pot-detection-ds is auto-gated. Share-alike; resolve GPL conflict with authors. Roboflow augmentation duplicates inside train - use provided splits. Bundled models (rf-detr, yolo12, yolo26) licences unverified."
+
+  - id: subpipe_mini2
+    title: "SubPipe: A Submarine Pipeline Inspection Dataset (SubPipeMini2, side-scan part)"
+    source_url: https://zenodo.org/records/10808161
+    doi: 10.5281/zenodo.10808161
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - name: SubPipeMini2.zip
+        url: https://zenodo.org/api/records/10808161/files/SubPipeMini2.zip/content
+        size: 4945761374
+        md5: 7e0d925f93a89bc0e8715e4f6f7caecb
+      - name: SubPipeMini.zip
+        url: https://zenodo.org/api/records/10808161/files/SubPipeMini.zip/content
+        size: 5907533517
+        md5: 8c63dac2e37dea0bbfda13fa6602b264
+      - name: SubPipe.zip
+        url: https://zenodo.org/api/records/10808161/files/SubPipe.zip/content
+        size: 27846463589
+        md5: abf70702276c69c04c8774c7832f8550
+    format: "Klein 3500 SSS images, LF 455 kHz 2500x500 (5000 imgs), HF 900 kHz 5000x500 (5030 imgs); JPEG; plus nav CSVs and camera images"
+    labels: "YOLO txt per image (class xc yc w h normalised) + one COCO json per frequency; single object class (pipeline); 6335 boxes"
+    notes: "Must reproduce Oceanscan-MST/REMARO copyright notice. Code repo GPL-3.0 (UNVERIFIED) - do not vendor code. Mini2 layout: SubPipeMiniSSS/DATA/SSS_{LF,HF}_images/{Image,YOLO_Annotation,COCO_Annotation}."
+
+  - id: catalan_sss_ssl
+    title: "A Large Scale Side-Scan Sonar Dataset of Seafloor Sediments for Self-Supervised Pretraining"
+    source_url: https://zenodo.org/records/10209445
+    doi: 10.5281/zenodo.10209445
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - name: sss_ssl_dataset_N713_384.z01
+        url: https://zenodo.org/api/records/10209445/files/sss_ssl_dataset_N713_384.z01/content
+        size: 21474836480
+        md5: 6a41f1196f12c17491e28c7a84672194
+      - name: sss_ssl_dataset_N713_384.z02
+        url: https://zenodo.org/api/records/10209445/files/sss_ssl_dataset_N713_384.z02/content
+        size: 21474836480
+        md5: 0b90b20d98ef48e0eabf168d9071d193
+      - name: sss_ssl_dataset_N713_384.zip
+        url: https://zenodo.org/api/records/10209445/files/sss_ssl_dataset_N713_384.zip/content
+        size: 9302423575
+        md5: 1ba31d40f0cde4dc374a78378a88df99
+    format: "384x384 SSS patches (192 px overlap), 434,164 images; file type UNVERIFIED; split zip, all 3 parts needed"
+    labels: "none (self-supervised pretraining)"
+    notes: "No smaller subset. 52.25 GB total. Catalonia coast, Tecnoambiente SL, DeeperSense H2020. Sonar model/frequency unstated."
+
+  - id: bath_mannequin
+    title: "Sidescan sonar images for training automated recognition of submerged body-like objects"
+    source_url: https://researchdata.bath.ac.uk/1467/
+    doi: 10.15125/BATH-01467
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - name: sidescan_sonar_images_PRIME_CNN_training.zip
+        url: https://researchdata.bath.ac.uk/1467/1/sidescan_sonar_images_PRIME_CNN_training.zip
+        size: 6165203835
+        md5: null   # not published; compute after download
+      - name: README.txt
+        url: https://researchdata.bath.ac.uk/1467/2/README.txt
+        size: null
+        md5: null
+    format: "PNG (3056) + MAT nav (397) + CSV waypoints; StarFish 450 and 990 kHz; layout site/date/run/{450,990,tracks,paths}"
+    labels: "NONE - unlabelled; some 'target' subfolders only; labelled set lost (README)"
+    notes: "Only usable for unlabelled/calibration. Images uncorrected, need rescaling; dims in filename. Canal/harbour freshwater."
+
+  - id: dfki_uxo
+    title: "An Acoustic and Optical Dataset for the Perception of Underwater Unexploded Ordnance (UXO)"
+    source_url: https://zenodo.org/records/13778485
+    doi: 10.5281/zenodo.13778485
+    licence: BSD-3-Clause
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - {name: sample.7z, url: "https://zenodo.org/api/records/13778485/files/sample.7z/content", size: 1732018855, md5: fcadef5fcc1a2cbdcc67812a5df732d7}
+      - {name: data_export_recordings.7z, url: "https://zenodo.org/api/records/13778485/files/data_export_recordings.7z/content", size: 16658054765, md5: 30c45956c0d034c27e3988711195c8c6}
+      - {name: data_export_polar.7z, url: "https://zenodo.org/api/records/13778485/files/data_export_polar.7z/content", size: 16487715574, md5: 6e785ffd07bbab4f491794c2244df478}
+      - {name: data_processed.7z, url: "https://zenodo.org/api/records/13778485/files/data_processed.7z/content", size: 61513277947, md5: 2b9ef16c763a6964c608ed99a9cd1edb}
+      - {name: data_export_3dmodels.7z, url: "https://zenodo.org/api/records/13778485/files/data_export_3dmodels.7z/content", size: 26442213, md5: 4ed8820771bbb39819eacf66b50ff509}
+      - {name: data_export_calibration.7z, url: "https://zenodo.org/api/records/13778485/files/data_export_calibration.7z/content", size: 1020, md5: bb7641890899bf424e3eeb242509f261}
+    format: "ARIS Explorer 3000 imaging sonar + camera frames, 7z archives; internal layout UNVERIFIED"
+    labels: "annotations on SD camera frames; multiply coords by 3 for FHD; file format UNVERIFIED"
+    notes: "Imaging (forward-looking) sonar, controlled tank - not side-scan. Optional/low priority."
+
+  - id: jncc_cefas_raw_sss
+    title: "Raw sidescan sonar data from Inner Dowsing, Race Bank and North Ridge cSAC, and Haisborough, Hammond and Winterton cSAC"
+    source_url: https://data.gov.uk/dataset/9e58988b-1ef6-4808-a629-fe4ffe27706a/
+    licence: OGL-UK-3.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: blocked
+    files: []   # no direct file link in CKAN; only http://jncc.defra.gov.uk/opendata (HTML)
+    format: "UNVERIFIED (raw SSS, likely XTF); size UNVERIFIED"
+    labels: "none"
+    notes: "Download route unresolved - contact data@jncc.gov.uk / Cefas. Blocked until file located."
+
+  - id: ai4shipwrecks
+    title: "Machine Learning for Shipwreck Segmentation from Side Scan Sonar Imagery: Dataset and Benchmark (AI4Shipwrecks)"
+    source_url: https://doi.org/10.7302/dmf4-x492
+    licence: "UNKNOWN (Deep Blue licence field not read)"
+    licence_status: unconfirmed
+    commercial_use: unknown
+    tier: research_only
+    availability: blocked
+    files: []   # 3 files, ~1.14 GB per search snippet; names/sizes/md5 not retrieved
+    format: "PNG exports from EdgeTech 2205 low-freq (520 kHz), 1728 px wide x variable height; 286 images, 28 wrecks; Thunder Bay NMS, Lake Huron"
+    labels: "binary per-pixel masks (0 other, 1 shipwreck); 50/50 site-grouped train/test; 1728x1728 tiles stride 100 (2539 train / 1722 test)"
+    notes: "Deep Blue returned 403 to scripted fetch. Read licence in a browser and fetch files manually before any use."
+
+  - id: nksid
+    title: "NanKai Sonar Image Dataset (NKSID)"
+    source_url: https://github.com/Jorwnpay/NK-Sonar-Image-Dataset
+    licence: "MIT (repo LICENSE; data-specific licence not stated)"
+    licence_status: unconfirmed
+    commercial_use: unknown
+    tier: research_only
+    availability: available
+    files:
+      - {name: big_propeller.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/big_propeller.zip", size: 788429, md5: null}
+      - {name: cylinder.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/cylinder.zip", size: 856536, md5: null}
+      - {name: fishing_net.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/fishing_net.zip", size: 500009, md5: null}
+      - {name: floats.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/floats.zip", size: 8384673, md5: null}
+      - {name: iron_pipeline.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/iron_pipeline.zip", size: 5698845, md5: null}
+      - {name: small_propeller.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/small_propeller.zip", size: 233740, md5: null}
+      - {name: soft_pipeline.zip, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/soft_pipeline.zip", size: 850590, md5: null}
+      - {name: "tire/half batch from 1 to 400.zip", url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/tire/half%20batch%20from%201%20to%20400.zip", size: 17641118, md5: null}
+      - {name: "tire/half batch from 401 to 834.zip", url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/tire/half%20batch%20from%20401%20to%20834.zip", size: 16450421, md5: null}
+      - {name: kfold_train.txt, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/kfold_train.txt", size: 479400, md5: null}
+      - {name: kfold_val.txt, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/kfold_val.txt", size: 120150, md5: null}
+      - {name: train_abs.txt, url: "https://raw.githubusercontent.com/Jorwnpay/NK-Sonar-Image-Dataset/main/NKSID/train_abs.txt", size: 93679, md5: null}
+    format: "JPEG, Oculus M750d multibeam forward-looking sonar (750 kHz / 1.2 MHz), 2617 images, Bohai Bay; NOT side-scan"
+    labels: "image-level classification, 8 classes (big_propeller, cylinder, fishing_net, floats, iron_pipeline, small_propeller, soft_pipeline, tire); train_abs.txt '<path> <label>', ten-fold index lists in kfold_*.txt"
+    notes: "No checksums published (compute locally). Small (~52 MB) - smoke-test candidate. Confirm data licence with authors."
+
+  - id: noaa_hsurveys
+    title: "NOAA NOS hydrographic surveys (NCEI): side-scan mosaics, backscatter, Descriptive Reports"
+    source_url: https://data.ngdc.noaa.gov/platforms/ocean/nos/coast/
+    licence: CC0-1.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files: []   # per-survey files fetched in Step 1B
+    format: "GeoTIFF side-scan mosaics (1 m), multibeam backscatter TIFF, BAG, DR PDF"
+    labels: "contact dispositions inside Descriptive Reports (expert disposition, not physical verification)"
+    notes: "Not for navigation. Mosaics are 1 m/pixel: too coarse for small-object detection."
