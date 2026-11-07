@@ -1,0 +1,52 @@
+# Tile size, overlap and pixel resolution for the side-scan detector
+
+Date: 2026-11-07. Decides how sonar images are cut and scaled before the detector (Step 2B).
+Every number below is quoted from the source named, read in full text unless marked.
+
+## Evidence
+
+| Source | What it says |
+|---|---|
+| SAHI, Akyon et al. 2022, arXiv 2202.06934 (full text read) | Fine-tuning on random patches 480-640 px (VisDrone) / 300-500 px (xView), **resized up to 800-1333 px wide** so small objects get more pixels. Inference on 640x640 / 400x400 slices with **25% overlap**, NMS match 0.5, plus an optional full-image pass. VisDrone TOOD AP50 29.4 (full image) -> 43.5 (slicing + overlap + full image); xView FCOS 2.2 -> 17.0. "25% overlap ... increases small/medium object AP ... but slightly decreases large object AP"; the full-image pass is needed for large objects; slices that are too small cut large objects. |
+| DBnet, Ma et al. 2025, J. Mar. Sci. Eng. 13:155 (full text read) | Side-scan waterfalls: SAHI slicing with **20% overlap**; whole-image input "leads to high leakage of small undersea targets (targets with less than 50 pixels x 50 pixels)". Window size d is not stated numerically. |
+| D-FINE config (`configs/dfine/include/dataloader.yml`, read) | Train and validation input **640x640**; multi-scale around base size 640; augmentations include **RandomZoomOut** and RandomIoUCrop until epoch 72. Code Apache-2.0; README: Objects365-pretrained weights "should not be assumed to be commercially cleared" -> product models start from COCO weights. |
+| STDnet, Bosquet et al. 2020 (abstract) | Defines small objects as under 16x16 px and shows high-resolution feature maps are key for them. |
+| NOAA HSSD 2003 (search snippet, current edition not yet checked) | Side-scan must detect a 1 m cube; tow speed such that a 1 m object is ensonified at least 3 times per pass; maximum range scale 100 m. A NOAA report states 0.3 m resolution meets the object-detection requirement for that cube. |
+
+## What this means for NetSight
+
+1. **Never feed whole waterfalls to the detector.** Waterfalls are thousands of pixels long; at
+   640 px input, small targets shrink below the 16-50 px range where detectors fail (DBnet, STDnet).
+2. **Network input stays 640x640**, matching D-FINE pretraining. The *tile cut from the sonar
+   image* is chosen so that, after resizing to 640, the smallest target class is at least
+   ~32 px (COCO's small-object limit; DBnet's 50 px is the safer goal). If targets are tiny,
+   tiles are cut smaller than 640 and upscaled, as SAHI does (480-640 -> 800-1333).
+3. **Overlap 20-25%**, and at least the size of the largest small-class object so it is never
+   cut in every tile that contains it.
+4. **Keep a full-image (downscaled) pass** for large objects such as wrecks, merged with the tile
+   results (SAHI's FI).
+5. **Turn off or weaken RandomZoomOut** when fine-tuning: it shrinks objects, which is the opposite
+   of what small sonar targets need.
+6. **Ground resolution (metres per pixel)** is a property of each sonar, not one global number.
+   Normalise to square ground pixels near the sensor's across-track resolution, never coarser
+   than the data supports and never invented by upsampling claims. Physics limit to report
+   honestly: along-track resolution (range x beamwidth, tens of cm at 50 m range for a ~0.5 deg
+   beam) is much coarser than across-track (a few cm), so small debris covers few along-track
+   pings whatever we do. A 0.3 m grid puts a 1 m cube on ~3 px: enough for a hydrographer's
+   1 m-cube rule, far too few for a detector.
+
+## What the papers cannot decide: the exact tile size
+
+It depends on each dataset's pixel size and the size of its objects in pixels. So the tile size
+is chosen from data, then checked by experiment:
+
+1. Download the labelled datasets unchanged (no tiling, no relabelling).
+2. Measure box sizes per dataset and class, in pixels and, where the ground resolution is known,
+   in metres.
+3. Set tile size per dataset so the 10th-percentile small target is >= 32 px at 640 input.
+4. Pilot: train D-FINE-S briefly with three settings (tile = 640 / 480 / 320 px, each resized to
+   640, 25% overlap, plus full-image pass) and compare AP_small and recall at a fixed false-alarm
+   rate on held-out surveys. Keep the winner.
+
+Labels are always stored in original-image coordinates, never in tile coordinates, so changing
+the tile size later is a re-run of code: no relabelling and no extra labelling cost.
