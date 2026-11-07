@@ -196,3 +196,80 @@ datasets:
     format: "GeoTIFF side-scan mosaics (1 m), multibeam backscatter TIFF, BAG, DR PDF"
     labels: "contact dispositions inside Descriptive Reports (expert disposition, not physical verification)"
     notes: "Not for navigation. Mosaics are 1 m/pixel: too coarse for small-object detection."
+
+  # --- Added 2026-11-07 from the Gemini dataset hunt; licences verified by Claude via the
+  # --- Zenodo / figshare APIs (machine-readable licence fields), not from the hunt's notes.
+  - id: aquascan_1k
+    title: "AquaScan-1K Side Scan Sonar Dataset"
+    source_url: https://zenodo.org/records/18771165
+    doi: 10.5281/zenodo.18771165
+    licence: MIT
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - {name: AquaScan-1K.zip, url: "https://zenodo.org/api/records/18771165/files/AquaScan-1K.zip/content", size: 2701229398, md5: db568d8add83bf00fe81b4122aa851d7}
+    format: "1,033 side-scan images, 455-1075 kHz, several lakebeds and angles (record description); file layout UNVERIFIED until unpacked"
+    labels: "bounding boxes of human surrogates (record description); format UNVERIFIED"
+    notes: "MIT: keep the copyright notice. Size and md5 from the Zenodo API; the downloader verifies both."
+
+  - id: mine_detection_sss
+    title: "Side-scan sonar imaging for Mine detection (Pessanha Santos et al.)"
+    source_url: https://figshare.com/articles/dataset/_i_Side-scan_sonar_imaging_for_Mine_detection_i_/24574879
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - {name: Training.zip, url: "https://ndownloader.figshare.com/files/44095121", size: 395600052, md5: b03dd2fda7d416c86d9d4bfad3ef2f86}
+      - {name: 2010.zip, url: "https://ndownloader.figshare.com/files/43169008", size: 67514394, md5: 43347a0cc383c0d3dbe0d24ae56f328d}
+      - {name: 2015.zip, url: "https://ndownloader.figshare.com/files/43169002", size: 22677520, md5: 93dfbb4fb7987734152c372496b4884c}
+      - {name: 2017.zip, url: "https://ndownloader.figshare.com/files/43169005", size: 19163464, md5: 9c2de230a2bbf654921416bea6fc0f42}
+      - {name: 2018.zip, url: "https://ndownloader.figshare.com/files/43169011", size: 106841977, md5: 25d091044a10c78674fedad655023e3b}
+      - {name: 2021.zip, url: "https://ndownloader.figshare.com/files/43168999", size: 1611502, md5: b84749b21fa95a4a4c7de3741db78bc7}
+    format: "side-scan images by survey year; layout UNVERIFIED until unpacked"
+    labels: "bounding boxes of mine-like objects (hunt record); UNVERIFIED until unpacked"
+    notes: "CC BY 4.0: attribution required in every product and report that uses it."
+
+  - id: swdd_walls
+    title: "SWDD: Sonar Wall Detection Dataset"
+    source_url: https://zenodo.org/records/13692547
+    doi: 10.5281/zenodo.13692547
+    licence: CC-BY-4.0
+    licence_status: verified
+    commercial_use: "yes"
+    tier: commercial
+    availability: available
+    files:
+      - {name: SWDD.v2.zip, url: "https://zenodo.org/api/records/13692547/files/SWDD.v2.zip/content", size: 5285868388, md5: 29eed5ad72cd9f175f9b113731a4e733}
+    format: "side-scan images; layout UNVERIFIED until unpacked"
+    labels: "bounding boxes of walls / structures (hunt record); UNVERIFIED"
+    notes: "Structures rather than debris: useful as hard negatives and for the structure class. CC BY 4.0 attribution."
+
+  - id: sctd
+    title: "Sonar Common Target Detection Dataset (SCTD)"
+    source_url: https://github.com/MingqiangNing/SCTD
+    licence: "not stated (repository)"
+    licence_status: unconfirmed
+    commercial_use: unknown
+    tier: research_only
+    availability: request
+    files: []
+    format: "side-scan images of shipwrecks, aircraft, humans (DBnet paper; repo)"
+    labels: "bounding boxes (repo); UNVERIFIED"
+    notes: "Research model only until the authors grant a licence (add to outreach emails)."
+
+  - id: kadal_multisource_v6
+    title: "KADAL Multi-Source Side-Scan Sonar Dataset (v6)"
+    source_url: https://huggingface.co/datasets/Dinoman1221/sonarvision-multisource-v6
+    licence: "apache-2.0 (card label)"
+    licence_status: conflict
+    commercial_use: unknown
+    tier: research_only
+    availability: request
+    files: []
+    format: "aggregated side-scan sets; gated (manual approval on Hugging Face)"
+    labels: "bounding boxes (card); UNVERIFIED"
+    notes: "Multi-source: likely re-packages other authors' datasets, so the card's Apache label may not be the uploader's to grant. Research only until each source is traced."
