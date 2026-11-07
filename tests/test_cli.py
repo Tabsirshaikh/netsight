@@ -252,7 +252,7 @@ def test_noaa_contacts_from_local_dr(tmp_path, monkeypatch, capsys):
     assert rc == 0
     text = capsys.readouterr().out
     assert "H99999: 1 contact rows" in text and "H99998: 0 contact rows" in text
-    assert "surveys with usable contact rows: 1 of 2" in text
+    assert "surveys with usable ground truth: 1 of 2" in text
     lines = out.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2 and "227-034244S" in lines[1]
     summary = summ.read_text(encoding="utf-8").splitlines()
@@ -289,3 +289,40 @@ def test_data_fetch_refuses_blocked_dataset(tmp_path, monkeypatch, capsys):
     )
     assert main(["data", "fetch", "b", "--register", str(reg)]) == 2
     assert "blocked" in capsys.readouterr().err
+
+
+def test_noaa_contacts_writes_feature_items(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    item = [
+        "1.1)  DTON 1",
+        "DANGER TO NAVIGATION",
+        "Survey Position:  30 09' 14.9\" N, 085 40' 08.2\" W",
+        "Least Depth:  3.42 m",
+        "Remarks:",
+        "Rock found by MBES.",
+    ]
+    _local_dr(tmp_path, "H99997", [["Feature Report"], item])
+    feats = tmp_path / "f.csv"
+    rc = main(["noaa", "contacts", "H99997", "--no-fetch", "--out", str(tmp_path / "c.csv"),
+               "--features", str(feats), "--summary", str(tmp_path / "s.csv")])
+    assert rc == 0
+    text = capsys.readouterr().out
+    assert "H99997: 0 contact rows, 1 feature items (1 decided)" in text
+    assert "surveys with usable ground truth: 1 of 1" in text
+    lines = feats.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2 and "verified" in lines[1]
+    summary = (tmp_path / "s.csv").read_text(encoding="utf-8")
+    assert "feature_items,feature_items_decided" in summary.splitlines()[0]
+
+
+def test_noaa_contacts_skips_failed_survey_and_still_writes(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NETSIGHT_DATA_DIR", str(tmp_path))
+    row = "227-034244S H33-I-E 12.133 28-48-19.481 91-16-40.857 Disproved"
+    _local_dr(tmp_path, "H99999", [[row]])
+    out = tmp_path / "c.csv"
+    rc = main(["noaa", "contacts", "H99999", "H99996", "--no-fetch", "--out", str(out)])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "H99996: skipped:" in captured.err and "no Descriptive Report PDF" in captured.err
+    assert "surveys with usable ground truth: 1 of 1 processed (1 skipped)" in captured.out
+    assert "227-034244S" in out.read_text(encoding="utf-8")
