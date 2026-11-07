@@ -99,3 +99,16 @@ def test_group_split_keeps_groups_whole_and_is_deterministic(tmp_path):
     assert {s.group for s in split["train"]} == {"RecA", "RecD"}
     with pytest.raises(ValueError):
         group_split(samples, test_groups={"RecB"}, val_groups={"RecB"})
+
+
+def test_read_yolo_zip_with_separate_labels_folder(tmp_path):
+    # AquaScan-1K layout: <root>/images/x.png and <root>/labels/x.txt
+    z = tmp_path / "aq.zip"
+    buf = io.BytesIO()
+    Image.new("L", (200, 100)).save(buf, format="PNG")
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("AquaScan-1K/images/a-Screenshot_2025-08-10_23.00.36.png", buf.getvalue())
+        f.writestr("AquaScan-1K/labels/a-Screenshot_2025-08-10_23.00.36.txt", "0 0.5 0.5 0.1 0.2\n")
+    (s,) = read_yolo_zip([z], "aquascan_1k", ["Human"])
+    np.testing.assert_allclose(s.boxes, [[90, 40, 110, 60]])
+    assert s.labels == ["Human"]

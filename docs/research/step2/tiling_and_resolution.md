@@ -70,7 +70,13 @@ Findings:
   has targets 2.5x smaller than train: a harder, differently distributed set.
 - The mine set's 416 px and 1024 px images are different images (no identical label file across
   sizes), not resized duplicates. Evaluation holds out whole survey years.
-- AquaScan-1K and SubPipe are measured when their downloads finish.
+- AquaScan-1K (measured 2026-11-07): 1,033 images, **all with a target** (1,068 human-surrogate
+  boxes, no empty images); 996 are 1920x1080 **screenshots of sonar display software** (file
+  names "Screenshot_...", "vlcsnap...", "rtsp...VLC"), so ground resolution is unknown and much of
+  each image is software interface. Shorter side p10 / p50 / p90 = 19 / 35.5 / 75 px: fine at tile
+  640. 32 capture-date sessions; test = 2025-11-23 + 13SEP25 (243), val = 2025-06-29 + 2025-06-15
+  (111). Its base rate (every image positive) must never inform calibration priors.
+- SubPipe is measured when its download finishes.
 
 ## Pilot results (step 4 of the procedure), 2026-11-07
 

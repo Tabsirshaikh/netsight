@@ -88,6 +88,10 @@ def read_yolo_zip(
                     continue
                 w, h = image_size(z.read(name))
                 label_name = str(PurePosixPath(name).with_suffix(".txt"))
+                if label_name not in members and "/images/" in f"/{label_name}":
+                    # YOLO layout with separate folders: .../images/x.png -> .../labels/x.txt
+                    swapped = f"/{label_name}".replace("/images/", "/labels/", 1)[1:]
+                    label_name = swapped if swapped in members else label_name
                 text = z.read(label_name).decode() if label_name in members else ""
                 rows = np.array(text.split(), dtype=float).reshape(-1, 5) if text.strip() else (
                     np.zeros((0, 5)))
