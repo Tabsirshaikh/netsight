@@ -61,14 +61,22 @@ def load_predictions(path: Path):
     return preds, gts
 
 
-def dump(model_dir: Path, out: Path, tile: int | None, limit: int | None) -> None:
+def dump(
+    model_dir: Path,
+    out: Path,
+    tile: int | None,
+    limit: int | None,
+    views: str = "none",
+    merge: str = "wbf",
+) -> None:
     import torch
     from transformers import AutoImageProcessor, DFineForObjectDetection
 
     from netsight.config import data_dir
-    from netsight.detect.dfine import ImageCache, predict_image
+    from netsight.detect.dfine import ImageCache
     from netsight.detect.pilot import build_splits
     from netsight.detect.pixel_cache import PixelCache
+    from netsight.detect.tta import predict_image_tta
 
     manifest = json.loads((model_dir / "manifest.json").read_text(encoding="utf-8"))
     tile = tile or int(manifest.get("config", {}).get("tile", 640))
@@ -79,7 +87,14 @@ def dump(model_dir: Path, out: Path, tile: int | None, limit: int | None) -> Non
     cache = PixelCache(pixel_dir) if (pixel_dir / "index.json").exists() else ImageCache(2048)
     splits = build_splits(data_dir())
     out.mkdir(parents=True, exist_ok=True)
-    info = {"model": str(model_dir), "model_id": manifest.get("model_id"), "tile": tile, "sets": {}}
+    info = {
+        "model": str(model_dir),
+        "model_id": manifest.get("model_id"),
+        "tile": tile,
+        "tta": views,
+        "merge": merge,
+        "sets": {},
+    }
     with torch.inference_mode():
         for split in ("val", "test"):
             for name, samples in splits[split].items():
@@ -87,13 +102,45 @@ def dump(model_dir: Path, out: Path, tile: int | None, limit: int | None) -> Non
                 if not samples:
                     continue
                 preds = [
-                    predict_image(model, processor, cache.get(s), tile_px=tile, device=device)
+                    predict_image_tta(
+                        model,
+                        processor,
+                        cache.get(s),
+                        tile_px=tile,
+                        device=device,
+                        views=views,
+                        merge=merge,
+                    )
                     for s in samples
                 ]
                 save_predictions(out / f"{split}_{name}.npz", preds, [s.boxes for s in samples])
                 info["sets"][f"{split}_{name}"] = len(samples)
                 print(split, name, len(samples), flush=True)
     (out / "info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+
+
+def detection_metrics(pred_dir: Path) -> dict:
+    """AP50, AP30, AP50 small and recall at 1 FP/image for every dumped set."""
+    from netsight.detect.evaluation import (
+        AREA_SMALL,
+        average_precision,
+        match_detections,
+        recall_at_fp_per_image,
+    )
+
+    info = json.loads((pred_dir / "info.json").read_text(encoding="utf-8"))
+    rows = {}
+    for key in info["sets"]:
+        preds, gts = load_predictions(pred_dir / f"{key}.npz")
+        m = match_detections(preds, gts)
+        rows[key] = {
+            "ap50": average_precision(m),
+            "ap30": average_precision(match_detections(preds, gts, iou_threshold=0.3)),
+            "ap50_small": average_precision(m, size_range=AREA_SMALL),
+            "recall_1fp": recall_at_fp_per_image(m, 1.0)[0],
+        }
+    (pred_dir / "detection_metrics.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    return rows
 
 
 def _pairs(path: Path, iou: float, min_score: float):
@@ -160,6 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--out", type=Path, required=True)
     d.add_argument("--tile", type=int)
     d.add_argument("--limit", type=int, help="images per set (smoke test)")
+    d.add_argument("--tta", choices=["none", "hflip", "hvflip"], default="none")
+    d.add_argument("--merge", choices=["wbf", "nms"], default="wbf")
+    a = sub.add_parser("ap", help="detection metrics of a dump, per set")
+    a.add_argument("--preds", type=Path, required=True)
     r = sub.add_parser("report")
     r.add_argument("--preds", type=Path, required=True)
     r.add_argument("--out", type=Path, required=True)
@@ -167,7 +218,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--min-score", type=float, default=0.05)
     args = ap.parse_args(argv)
     if args.cmd == "dump":
-        dump(args.model, args.out, args.tile, args.limit)
+        dump(args.model, args.out, args.tile, args.limit, args.tta, args.merge)
+    elif args.cmd == "ap":
+        for key, row in detection_metrics(args.preds).items():
+            print(key, {k: round(v, 4) for k, v in row.items()})
     else:
         for key, row in report(args.preds, args.out, args.iou, args.min_score).items():
             print(key, {k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()})
