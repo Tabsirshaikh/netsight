@@ -33,6 +33,12 @@ class ImageCache:
         self._images: OrderedDict[tuple[str, str], np.ndarray] = OrderedDict()
         self.max_images = max_images
 
+    def __getstate__(self):  # DataLoader workers get an empty cache of their own
+        return {"max_images": self.max_images}
+
+    def __setstate__(self, state):
+        self.__init__(state["max_images"])
+
     def get(self, sample: DetectionSample) -> np.ndarray:
         key = (sample.zip_path, sample.member)
         if key in self._images:
@@ -62,30 +68,48 @@ def _clip(result: dict, h: int, w: int, min_side: float = 1.0):
     return boxes[keep], scores[keep], np.zeros(int(keep.sum()), dtype=np.int64)
 
 
-def _coco(boxes: np.ndarray) -> list[dict]:
-    return [
-        {"bbox": [float(b[0]), float(b[1]), float(b[2] - b[0]), float(b[3] - b[1])],
-         "category_id": 0, "area": float((b[2] - b[0]) * (b[3] - b[1])), "iscrowd": 0}
-        for b in boxes
-    ]
+def to_pixels(crops: Sequence[np.ndarray], size: int = NET_INPUT) -> torch.Tensor:
+    """Greyscale uint8 crops -> (n, 3, size, size) floats in [0, 1].
+
+    Same scaling as D-FINE's RTDetrImageProcessor (resize to 640x640, rescale 1/255, no mean/std
+    normalisation) but done with one tensor resize instead of the processor's per-image path.
+    """
+    out = []
+    for c in crops:
+        t = torch.from_numpy(np.ascontiguousarray(c)).float().div_(255.0)[None, None]
+        t = torch.nn.functional.interpolate(t, size=(size, size), mode="bilinear",
+                                            align_corners=False, antialias=True)
+        out.append(t[0].expand(3, -1, -1))
+    return torch.stack(out)
+
+
+def _targets(boxes: np.ndarray, h: int, w: int) -> dict:
+    """Tile-pixel boxes -> D-FINE training targets (normalised centre x, y, width, height)."""
+    b = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
+    cxcywh = np.column_stack([(b[:, 0] + b[:, 2]) / 2 / w, (b[:, 1] + b[:, 3]) / 2 / h,
+                              (b[:, 2] - b[:, 0]) / w, (b[:, 3] - b[:, 1]) / h])
+    return {"class_labels": torch.zeros(len(b), dtype=torch.long),
+            "boxes": torch.from_numpy(cxcywh.astype(np.float32)).reshape(-1, 4)}
 
 
 class TileDataset(Dataset):
-    """Training tiles -> (pixel_values, labels) in the format DFineForObjectDetection expects."""
+    """Training tiles -> (pixel_values, labels) in the format DFineForObjectDetection expects.
+
+    Augmentation randomness is seeded per (seed, item), so DataLoader workers never repeat each
+    other and a re-run reproduces the same augmentations.
+    """
 
     def __init__(
         self,
         samples: Sequence[DetectionSample],
         tiles: Sequence[TrainTile],
-        processor,
         *,
         augment: bool,
         seed: int = 0,
         cache: ImageCache | None = None,
     ) -> None:
-        self.samples, self.tiles, self.processor = samples, tiles, processor
-        self.augment = augment
-        self.rng = np.random.default_rng(seed)
+        self.samples, self.tiles = samples, tiles
+        self.augment, self.seed = augment, seed
         self.cache = cache or ImageCache()
 
     def __len__(self) -> int:
@@ -98,20 +122,16 @@ class TileDataset(Dataset):
         boxes = t.boxes.copy()
         h, w = crop.shape
         if self.augment:
-            if self.rng.random() < 0.5:  # port/starboard mirror
+            rng = np.random.default_rng([self.seed, i])
+            if rng.random() < 0.5:  # port/starboard mirror
                 crop = crop[:, ::-1]
                 boxes[:, [0, 2]] = w - boxes[:, [2, 0]]
-            if self.rng.random() < 0.5:  # along-track reversal
+            if rng.random() < 0.5:  # along-track reversal
                 crop = crop[::-1, :]
                 boxes[:, [1, 3]] = h - boxes[:, [3, 1]]
-            crop = crop * self.rng.uniform(0.8, 1.2) + self.rng.uniform(-15, 15)  # gain change
+            crop = crop * rng.uniform(0.8, 1.2) + rng.uniform(-15, 15)  # gain change
         crop = np.clip(crop, 0, 255).astype(np.uint8)
-        enc = self.processor(
-            images=[_rgb(np.ascontiguousarray(crop))],
-            annotations=[{"image_id": i, "annotations": _coco(boxes)}],
-            return_tensors="pt",
-        )
-        return enc["pixel_values"][0], enc["labels"][0]
+        return to_pixels([crop])[0], _targets(boxes, h, w)
 
 
 def collate(batch):
@@ -143,7 +163,7 @@ def predict_image(
     overlap: float = 0.25,
     full_image: bool = True,
     threshold: float = 0.01,
-    batch_size: int = 8,
+    batch_size: int = 16,
     max_detections: int = 100,
     device: str = "cuda",
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -155,9 +175,9 @@ def predict_image(
     per_tile = []
     for start in range(0, len(crops), batch_size):
         chunk = crops[start : start + batch_size]
-        enc = processor(images=[_rgb(c) for _, c in chunk], return_tensors="pt")
+        pixels = to_pixels([c for _, c in chunk]).to(device, non_blocking=True)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
-            out = model(pixel_values=enc["pixel_values"].to(device))
+            out = model(pixel_values=pixels)
         results = processor.post_process_object_detection(
             out, threshold=threshold, target_sizes=[c.shape[:2] for _, c in chunk]
         )
@@ -165,9 +185,8 @@ def predict_image(
             per_tile.append((t, *_clip(r, c.shape[0], c.shape[1])))
     full = None
     if full_image and len(tiles) > 1:
-        enc = processor(images=[_rgb(image)], return_tensors="pt")
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
-            out = model(pixel_values=enc["pixel_values"].to(device))
+            out = model(pixel_values=to_pixels([image]).to(device))
         (r,) = processor.post_process_object_detection(out, threshold=threshold,
                                                        target_sizes=[(h, w)])
         full = _clip(r, h, w)

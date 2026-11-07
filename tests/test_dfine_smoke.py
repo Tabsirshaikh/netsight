@@ -47,7 +47,7 @@ def test_dataset_labels_are_normalised_cxcywh(tmp_path, model_and_processor):
     _, processor = model_and_processor
     samples = read_yolo_zip([_zip(tmp_path)], "synthetic", ["object"])
     tiles = build_train_tiles(samples, 480, neg_ratio=0.0, rng=np.random.default_rng(0))
-    ds = TileDataset(samples, tiles, processor, augment=False)
+    ds = TileDataset(samples, tiles, augment=False)
     pixels, labels = ds[0]
     assert tuple(pixels.shape) == (3, 640, 640)
     assert labels["class_labels"].tolist() == [0]
@@ -62,7 +62,7 @@ def test_one_training_step_and_inference(tmp_path, model_and_processor):
     model.to(device).train()
     samples = read_yolo_zip([_zip(tmp_path)], "synthetic", ["object"])
     tiles = build_train_tiles(samples, 320, neg_ratio=0.0, rng=np.random.default_rng(0))
-    ds = TileDataset(samples, tiles, processor, augment=True)
+    ds = TileDataset(samples, tiles, augment=True)
     pixels, labels = collate([ds[i] for i in range(len(ds))])
     labels = [{k: v.to(device) for k, v in lab.items()} for lab in labels]
     opt = make_optimizer(model, 1e-4)
@@ -76,3 +76,29 @@ def test_one_training_step_and_inference(tmp_path, model_and_processor):
     assert boxes.ndim == 2 and boxes.shape[1] == 4 and len(boxes) == len(scores)
     if len(boxes):
         assert boxes[:, 2].max() <= 480.5 and boxes[:, 0].min() >= -0.5
+
+
+def test_dataset_survives_pickling_for_worker_processes(tmp_path):
+    import pickle
+
+    samples = read_yolo_zip([_zip(tmp_path)], "synthetic", ["object"])
+    tiles = build_train_tiles(samples, 480, neg_ratio=0.0, rng=np.random.default_rng(0))
+    ds = TileDataset(samples, tiles, augment=True, seed=3)
+    first = ds[0]
+    clone = pickle.loads(pickle.dumps(ds))
+    again = clone[0]
+    assert torch.equal(first[0], again[0])  # same seed and index -> same augmentation
+    assert torch.equal(first[1]["boxes"], again[1]["boxes"])
+
+
+def test_fast_pixels_match_processor_resize(model_and_processor):
+    from netsight.detect.dfine import to_pixels
+
+    _, processor = model_and_processor
+    rng = np.random.default_rng(0)
+    crop = rng.integers(0, 255, (320, 320)).astype(np.uint8)
+    ours = to_pixels([crop])[0]
+    ref = processor(images=[np.repeat(crop[:, :, None], 3, axis=2)],
+                    return_tensors="pt")["pixel_values"][0]
+    assert ours.shape == ref.shape == (3, 640, 640)
+    assert float((ours - ref).abs().mean()) < 0.02  # same scaling, near-identical resize

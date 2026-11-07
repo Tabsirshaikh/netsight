@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--val-images", type=int, default=120, help="per dataset, per evaluation")
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
+    ap.add_argument("--eval-every", type=int, default=2, help="validate every N epochs")
     args = ap.parse_args(argv)
 
     out = Path(args.out)
@@ -147,16 +149,19 @@ def main(argv: list[str] | None = None) -> int:
     for epoch in range(args.epochs):
         tiles = balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
                                max_tiles=args.max_tiles, seed=args.seed + epoch)
-        ds = TileDataset(splits["train"], tiles, processor, augment=True, seed=args.seed + epoch,
-                         cache=cache)
+        ds = TileDataset(splits["train"], tiles, augment=True, seed=args.seed + epoch,
+                         cache=ImageCache(max_images=256))
         loader = DataLoader(ds, batch_size=args.batch, shuffle=True, collate_fn=collate,
-                            num_workers=0, drop_last=True)
+                            num_workers=args.workers, pin_memory=device == "cuda",
+                            prefetch_factor=4 if args.workers else None,
+                            persistent_workers=False, drop_last=True)
         model.train()
         t0, losses = time.time(), []
         for pixels, labels in loader:
-            labels = [{k: v.to(device) for k, v in lab.items()} for lab in labels]
+            labels = [{k: v.to(device, non_blocking=True) for k, v in lab.items()}
+                      for lab in labels]
             with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
-                loss = model(pixel_values=pixels.to(device), labels=labels).loss
+                loss = model(pixel_values=pixels.to(device, non_blocking=True), labels=labels).loss
             if not torch.isfinite(loss):
                 raise RuntimeError(f"non-finite loss at step {step}")
             loss.backward()
@@ -171,6 +176,13 @@ def main(argv: list[str] | None = None) -> int:
                 log.write(json.dumps({"epoch": epoch, "step": step, "loss": np.mean(losses[-50:]),
                                       "tiles_per_s": rate}) + "\n")
                 log.flush()
+        last = epoch == args.epochs - 1
+        if (epoch + 1) % args.eval_every and not last:
+            history.append({"epoch": epoch, "train_loss": float(np.mean(losses)),
+                            "train_tiles": len(tiles), "seconds": time.time() - t0})
+            log.write(json.dumps(history[-1]) + "\n")
+            log.flush()
+            continue
         metrics = {k: evaluate(model, processor, v, args.tile, cache, device)
                    for k, v in val.items()}
         score = float(np.nanmean([m["ap50"] for m in metrics.values()]))
