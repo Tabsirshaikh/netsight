@@ -85,3 +85,8 @@ End with a progress summary for the user.
   literature_pipelines.md); every split found is a random/ratio image split, none held-out.
   v0.2 training started (5 datasets, ~14 tiles/s, ~10 min/epoch, early stopping).
   Phase C side task: detector -> trust-layer calibration module delegated to GPT-6.1-sol.
+- 05:40 Calibration module reviewed and committed (best_method may now keep raw scores when no
+  calibrator beats them). calibrate_run.py: dump val/test predictions per dataset, report
+  calibration fitted on own-dataset val and on pooled val. v0.1 dump running. WP4 classical
+  evidence features (shadow/height, mesh FFT/Gabor, ridge+Hough lines, ripple structure tensor,
+  background-statistics anomaly baseline) delegated to GPT-6.1-sol.
