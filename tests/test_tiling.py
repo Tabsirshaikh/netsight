@@ -296,3 +296,12 @@ def test_mismatched_lengths_and_shapes() -> None:
         to_image_coords(np.empty((0, 3)), tile)
     with pytest.raises(ValueError, match="boxes"):
         scale_boxes(np.empty(4), 1.0, 1.0)
+
+
+def test_full_image_pass_only_for_tiled_near_square_images():
+    from netsight.detect.tiling import full_image_pass_allowed
+
+    assert full_image_pass_allowed(1024, 1024, n_tiles=4)
+    assert not full_image_pass_allowed(640, 640, n_tiles=1)     # already seen whole
+    assert not full_image_pass_allowed(5000, 500, n_tiles=10)   # 10:1 would be distorted
+    assert full_image_pass_allowed(1920, 1080, n_tiles=8)       # 1.8:1 is acceptable

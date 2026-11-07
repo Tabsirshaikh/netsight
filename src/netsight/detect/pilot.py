@@ -19,7 +19,15 @@ import torch
 from torch.utils.data import DataLoader
 
 from netsight.config import data_dir
-from netsight.datasets.detection import group_split, read_ghostvision_zip, read_yolo_zip
+from netsight.datasets.detection import (
+    aquascan_group,
+    group_split,
+    ordered_group_split,
+    read_coco_zip,
+    read_ghostvision_zip,
+    read_yolo_zip,
+    subpipe_group,
+)
 from netsight.detect.dfine import (
     PRODUCT_CHECKPOINT,
     ImageCache,
@@ -43,7 +51,8 @@ from netsight.models.manifest import build_training_manifest, write_manifest
 from netsight.trust.provenance import Ledger
 
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
-DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot"}
+DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot",
+               "aquascan": "aquascan_1k", "subpipe": "subpipe_mini2"}
 
 
 def build_splits(root: Path) -> dict:
@@ -55,10 +64,20 @@ def build_splits(root: Path) -> dict:
     shift = [s for s in gv if s.group == "Contact"]  # targets 2.5x smaller: shifted test set
     g = group_split([s for s in gv if s.group != "Contact"],
                     test_groups={"Rec9", "Rec14", "Rec8"}, val_groups={"Rec13", "Rec2"})
+    aq = read_yolo_zip([raw / "aquascan_1k" / "AquaScan-1K.zip"], "aquascan_1k", ["Human"],
+                       group_fn=aquascan_group)
+    a = group_split(aq, test_groups={"2025-11-23", "13SEP25"},
+                    val_groups={"2025-06-29", "2025-06-15"})
+    sp = read_coco_zip(raw / "subpipe_mini2" / "SubPipeMini2.zip", "subpipe_mini2",
+                       group_fn=subpipe_group)
+    p = ordered_group_split(sp, n_val=2, n_test=3, gap=1,
+                            key=lambda grp: int(grp[1:]) if grp[1:].isdigit() else -1)
     return {
-        "train": m["train"] + g["train"],
-        "val": {"mine": m["val"], "ghostvision": g["val"]},
-        "test": {"mine": m["test"], "ghostvision": g["test"], "ghostvision_shift": shift},
+        "train": m["train"] + g["train"] + a["train"] + p["train"],
+        "val": {"mine": m["val"], "ghostvision": g["val"], "aquascan": a["val"],
+                "subpipe": p["val"]},
+        "test": {"mine": m["test"], "ghostvision": g["test"], "ghostvision_shift": shift,
+                 "aquascan": a["test"], "subpipe": p["test"]},
     }
 
 
@@ -127,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
+    ap.add_argument("--model-id", default=None, help="name recorded in the model label")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
     ap.add_argument("--eval-every", type=int, default=2, help="validate every N epochs")
     args = ap.parse_args(argv)
@@ -222,7 +242,8 @@ def main(argv: list[str] | None = None) -> int:
         indent=2, default=float), encoding="utf-8")
     manifest = build_training_manifest(
         sorted(keep), load_register(default_register_path()),
-        model_id=f"dfine-s-pilot-{'+'.join(chosen)}-tile{args.tile}-seed{args.seed}",
+        model_id=args.model_id
+        or f"dfine-s-pilot-{'+'.join(chosen)}-tile{args.tile}-seed{args.seed}",
         code_version=_git_commit(), config=config)
     write_manifest(manifest, out / "model",
                    ledger=Ledger(data_dir() / "provenance" / "models.jsonl"))

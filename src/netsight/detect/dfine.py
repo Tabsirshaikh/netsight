@@ -18,7 +18,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from netsight.datasets.detection import DetectionSample
-from netsight.detect.tiling import make_tiles, merge_detections
+from netsight.detect.tiling import full_image_pass_allowed, make_tiles, merge_detections
 from netsight.detect.training_tiles import TrainTile
 
 PRODUCT_CHECKPOINT = "ustc-community/dfine-small-coco"
@@ -184,7 +184,7 @@ def predict_image(
         for (t, c), r in zip(chunk, results, strict=True):
             per_tile.append((t, *_clip(r, c.shape[0], c.shape[1])))
     full = None
-    if full_image and len(tiles) > 1:
+    if full_image and full_image_pass_allowed(w, h, n_tiles=len(tiles)):
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
             out = model(pixel_values=to_pixels([image]).to(device))
         (r,) = processor.post_process_object_detection(out, threshold=threshold,

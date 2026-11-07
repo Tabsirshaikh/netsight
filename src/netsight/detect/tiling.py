@@ -224,3 +224,14 @@ def scale_boxes(boxes: FloatArray, sx: float, sy: float) -> FloatArray:
     """Scale x and y coordinates without modifying the input."""
     boxes = _as_boxes(boxes)
     return boxes * np.array([sx, sy, sx, sy], dtype=np.float64)
+
+
+FULL_IMAGE_MAX_ASPECT = 2.0
+
+
+def full_image_pass_allowed(width: int, height: int, *, n_tiles: int,
+                            max_aspect: float = FULL_IMAGE_MAX_ASPECT) -> bool:
+    """Add a whole-image pass only when the image was tiled and resizing it to the square
+    network input would not distort it badly (a 5000x500 waterfall would shrink 10:1)."""
+    aspect = max(width, height) / max(1, min(width, height))
+    return n_tiles > 1 and aspect <= max_aspect

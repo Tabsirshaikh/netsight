@@ -151,3 +151,22 @@ def test_read_coco_zip_groups_twin_frequencies_together(tmp_path):
     np.testing.assert_allclose(with_box[0].boxes, [[10, 5, 30, 45]])
     assert with_box[0].labels == ["Pipeline"] and with_box[0].extra["band"] in ("HF", "LF")
     assert subpipe_group("1693569954.939.pbm") != subpipe_group("1693570100.000.pbm")
+
+
+def test_ordered_split_leaves_gaps_between_parts(tmp_path):
+    from netsight.datasets.detection import ordered_group_split
+
+    z = tmp_path / "o.zip"
+    with zipfile.ZipFile(z, "w") as f:
+        for g in range(10):
+            f.writestr(f"g{g}_0.jpg", _jpeg(8, 8))
+            f.writestr(f"g{g}_0.txt", "")
+    samples = read_yolo_zip([z], "x", ["o"], group_fn=lambda n: n.split("_")[0])
+    split = ordered_group_split(samples, n_val=2, n_test=3, gap=1,
+                                key=lambda g: int(g[1:]))
+    groups = {k: sorted({s.group for s in v}, key=lambda g: int(g[1:])) for k, v in split.items()}
+    assert groups["test"] == ["g7", "g8", "g9"]
+    assert groups["val"] == ["g4", "g5"]          # g6 is the gap before test
+    assert groups["train"] == ["g0", "g1", "g2"]  # g3 is the gap before val
+    with pytest.raises(ValueError):
+        ordered_group_split(samples, n_val=5, n_test=5, gap=1)

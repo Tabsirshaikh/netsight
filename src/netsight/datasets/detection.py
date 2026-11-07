@@ -219,3 +219,42 @@ def group_split(
         key = "test" if s.group in test_groups else "val" if s.group in val_groups else "train"
         out[key].append(s)
     return out
+
+
+def ordered_group_split(
+    samples: Sequence[DetectionSample],
+    *,
+    n_val: int,
+    n_test: int,
+    gap: int = 1,
+    key: Callable[[str], object] | None = None,
+) -> dict[str, list[DetectionSample]]:
+    """Split groups in order (e.g. time): train | gap | val | gap | test.
+
+    For data where neighbouring groups overlap (consecutive waterfall images), the dropped
+    `gap` groups keep near-identical images out of both sides of a split boundary.
+    """
+    groups = sorted({s.group for s in samples}, key=key)
+    if n_val + n_test + 2 * gap >= len(groups):
+        raise ValueError(f"{len(groups)} groups are too few for {n_val} val + {n_test} test "
+                         f"+ {2 * gap} gap groups and some training")
+    test = set(groups[len(groups) - n_test:])
+    val_end = len(groups) - n_test - gap
+    val = set(groups[val_end - n_val:val_end])
+    train = set(groups[: val_end - n_val - gap])
+    return {"train": [s for s in samples if s.group in train],
+            "val": [s for s in samples if s.group in val],
+            "test": [s for s in samples if s.group in test]}
+
+
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DMY = re.compile(r"_(\d{2}[A-Z]{3}\d{2})_")
+
+
+def aquascan_group(file_name: str) -> str:
+    """AquaScan-1K session = capture date in the screenshot or recording file name."""
+    m = _DATE.search(file_name)
+    if m:
+        return m.group(0)
+    m = _DMY.search(file_name)
+    return m.group(1) if m else "other"
