@@ -95,3 +95,8 @@ End with a progress summary for the user.
   Brier skill on 5/6; pooled calibrator ~ per-dataset. Flip TTA chosen on val (hflip+WBF),
   confirmed on test +0.02 mean AP50 (tta_v0.1.md). WP4 evidence features committed.
   v0.2 at epoch 3 (val after epoch 2: mine 0.232, gv 0.162, aq 0.255, sp 0.790, sctd 0.788).
+- 07:30 WP5 on real detections (operating_point_v0.1.md): a validation-frozen LTT threshold
+  breaks the FA budget on 8/12 held-out sets (survey-to-survey over-dispersion); a survey-level
+  conformal threshold also fails (8/12 at 1 FA/image vs 89% promised). The label-free count
+  threshold (flag <= budget x area on the new survey) held it on 12/12. Product rule: guarantee
+  FA by counting, report recall as an estimate. Waiting for v0.2 (phase D).
