@@ -244,9 +244,9 @@ datasets:
     availability: available
     files:
       - {name: SWDD.v2.zip, url: "https://zenodo.org/api/records/13692547/files/SWDD.v2.zip/content", size: 5285868388, md5: 29eed5ad72cd9f175f9b113731a4e733}
-    format: "side-scan images; layout UNVERIFIED until unpacked"
-    labels: "bounding boxes of walls / structures (hunt record); UNVERIFIED"
-    notes: "Structures rather than debris: useful as hard negatives and for the structure class. CC BY 4.0 attribution."
+    format: "ZOTERO-REPO/: SWDD/Dataset (COCO train/val/test 604/130/130), SSS-Video-frames (6,244 frames + YOLO), SWDD-Validation (Clean/Noisy/Surface, COCO), SWDD-Adversarial (manipulated images)"
+    labels: "COCO boxes, classes wall and noWall (meaning of noWall unclear)"
+    notes: "Inspected 2026-11-08: essentially ONE survey (23-06-2023 SurveyDataset-RealTimeSSS); 648 of 864 Dataset images are augmented copies (aug_*) of ~216 originals, spread across train/val/test, so its own test split leaks. Not used for training v0.2; candidate out-of-distribution test (216 originals) for the applicability gate. CC BY 4.0 attribution."
 
   - id: sctd
     title: "Sonar Common Target Detection Dataset (SCTD)"

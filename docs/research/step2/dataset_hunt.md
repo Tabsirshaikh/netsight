@@ -21,7 +21,7 @@ metadata; **hunt** = quote-checked by the hunt only; must be verified before use
 |---|---|---|---|---|
 | AquaScan-1K (Zenodo 18771165) | boxes, human surrogates, 455-1075 kHz | MIT | verified | product + research |
 | Mine detection, Pessanha Santos (figshare 24574879) | boxes, mine-like shapes | CC BY 4.0 | verified | product + research |
-| SWDD wall detection (Zenodo 13692547) | boxes, walls / structures | CC BY 4.0 | verified | product + research (structures, hard negatives) |
+| SWDD wall detection (Zenodo 13692547) | boxes, walls / structures | CC BY 4.0 | verified | **inspected: one survey, 75% augmented copies leaking across its splits; not for training, test-only (OOD)** |
 | SCTD (GitHub MingqiangNing/SCTD) | boxes: shipwreck, aircraft, human | not stated | hunt | research only; ask authors |
 | KADAL multi-source v6 (Hugging Face, gated) | boxes | card says Apache-2.0 | hunt | research only: re-packages other datasets |
 | IEEE DataPort side-scan image (Can Lei) | image classes | CC BY | hunt | classification pretraining; registration needed |
