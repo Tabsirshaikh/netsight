@@ -57,3 +57,15 @@ metadata; **hunt** = quote-checked by the hunt only; must be verified before use
 - **Indian waters:** no open side-scan data found; NIOT / CSIR-NIO data is by institutional
   request only (see `docs/outreach/data_requests.md`).
 - Add SCTD, Marine-PULSE, NNSSS and the marine-debris FLS authors to the outreach emails.
+
+## Second hunt (2026-11-08, Gemini, 206 pages, 88 searches)
+
+| Dataset | Finding (checked by Claude) | Use |
+|---|---|---|
+| **AI4Shipwrecks** (Deep Blue 10.7302/dmf4-x492) | 1,033 side-scan images of shipwrecks, Thunder Bay NMS 2022-2023, Iver3 AUV + EdgeTech 2205 ultra-high-resolution side-scan, ~0.1 m/pixel, binary masks by marine archaeologists, ~1.2 GB. Licence: hunt says CC0 1.0; DataCite lists none; the Deep Blue page needs a browser (bot check) - **confirm on the page** | **Best lead: sharp, many sites; masks -> boxes** |
+| NNSSS (GitHub aburguera/NNSSS) | Seabed-type masks (rock / sand / other), Klein 3900, no licence file | Not object labels |
+| Marine-PULSE (Zenodo 7922705) | 627 images, whole-image classes (pipeline, mound, seabed, platform) | Classification only |
+| AURORA (NOC, UK) | Raw XTF side-scan + multibeam + camera, no object labels, registration | Later (unlabelled seabed) |
+| "Huo et al." (IEEE DataPort) | Recorded with the same DOI as AURORA; details contradict each other | Unverified, ignored |
+
+Public labelled side-scan detection data remains scarce; AI4Shipwrecks is the one clear addition.
