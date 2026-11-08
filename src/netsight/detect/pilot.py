@@ -40,6 +40,7 @@ from netsight.detect.dfine import (
     predict_image,
     warmup_cosine,
 )
+from netsight.detect.ema import ModelEMA
 from netsight.detect.evaluation import (
     AREA_SMALL,
     average_precision,
@@ -216,6 +217,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
+        "--ema", type=float, default=0.0, help="weight EMA decay (e.g. 0.9998); 0 = off"
+    )
+    ap.add_argument(
         "--scale-aug",
         type=float,
         nargs=2,
@@ -277,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     log = open(out / "train_log.jsonl", "a", encoding="utf-8")
     best, history, step = -1.0, [], 0
     stopper = EarlyStopper(args.patience) if args.patience > 0 else None
+    ema = ModelEMA(model, decay=args.ema) if args.ema else None
     for epoch in range(args.epochs):
         tiles = balanced_tiles(
             splits["train"],
@@ -318,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
             opt.step()
+            if ema is not None:
+                ema.update(model)
             sched.step()
             opt.zero_grad(set_to_none=True)
             losses.append(float(loss.detach()))
@@ -349,8 +356,9 @@ def main(argv: list[str] | None = None) -> int:
             log.write(json.dumps(history[-1]) + "\n")
             log.flush()
             continue
+        scored = ema.module if ema is not None else model
         metrics = {
-            k: evaluate(model, processor, v, args.tile, cache, device) for k, v in val.items()
+            k: evaluate(scored, processor, v, args.tile, cache, device) for k, v in val.items()
         }
         score = float(np.nanmean([m["ap50"] for m in metrics.values()]))
         history.append(
@@ -367,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         log.flush()
         if score > best:
             best = score
-            model.save_pretrained(out / "model")
+            scored.save_pretrained(out / "model")
             processor.save_pretrained(out / "model")
         if stopper is not None and stopper.update(score):
             log.write(json.dumps({"early_stop_epoch": epoch, "best_val_mean_ap50": best}) + "\n")
