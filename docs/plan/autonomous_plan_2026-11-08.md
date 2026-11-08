@@ -111,3 +111,6 @@ End with a progress summary for the user.
   Test B (test_b_resampling.md): correcting Contact's pixel geometry (rows x1.32, x1.5) lifts
   AP50 0.175 -> 0.368; wrong-way control ~no gain; x1.5 hurts most validation sets -> correction
   must be per survey from sonar metadata. Track 2 (resampling module) justified.
+- 14:45 v0.4 (v0.2 + weight EMA) ACCEPTED (research_model_v0.4.md): better than v0.2 on every
+  test set (mine +0.037, Contact +0.082, SubPipe +0.104 with CI > 0); vs v0.1 only Contact -0.031
+  (sensor shift, fixed by per-survey resampling). Next: test A learning curve on GhostVision.
