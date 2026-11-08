@@ -100,3 +100,9 @@ End with a progress summary for the user.
   conformal threshold also fails (8/12 at 1 FA/image vs 89% promised). The label-free count
   threshold (flag <= budget x area on the new survey) held it on 12/12. Product rule: guarantee
   FA by counting, report recall as an estimate. Waiting for v0.2 (phase D).
+- 08:20 Phase D (research_model_v0.2.md): v0.2 best val 0.529 (v0.1 0.454). Paired bootstrap on
+  test: better on mine (+0.045, CI excludes 0), AquaScan, GhostVision@0.3, SCTD; worse on the
+  GhostVision Contact shift set (-0.113, CI -0.138..-0.092) -> decision rule NOT met. Cause: boxes
+  too big on 2.5x smaller targets (pred median 34 px vs GT 18 px; ~60% of loss is box size).
+  v0.3 = v0.2 + random zoom 0.5-1.5x training started (~3 h). Per-dataset fine-tune postponed
+  until the better base is known.
