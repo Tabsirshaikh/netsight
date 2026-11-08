@@ -82,6 +82,11 @@ class Runtime:
     pack_writer: Callable[..., Any] | None = None
 
 
+# The detector proposes up to 100 candidates per image (raw score >= 0.01) for ranking and
+# calibration. Unflagged candidates below this calibrated probability are not sent to the UI.
+MIN_SHOWN_PROBABILITY = 0.01
+
+
 def json_safe(value: Any) -> Any:
     """JSON has no representation for an infinite, no-contact threshold."""
     if isinstance(value, Enum):
@@ -336,6 +341,7 @@ def analyze_sync(
     output: list[dict[str, Any]] = []
     contacts: list[dict[str, Any]] = []
     contact_number = 0
+    hidden_candidates = 0
     for index, ((name, image, _), (boxes, scores, probabilities)) in enumerate(
         zip(images, predictions, strict=True)
     ):
@@ -344,6 +350,9 @@ def analyze_sync(
             contact_number += 1
             contact_id = f"c{contact_number:05d}"
             flagged = bool(score >= threshold)
+            if not flagged and float(probability) < MIN_SHOWN_PROBABILITY:
+                hidden_candidates += 1  # near-zero candidates: used for the threshold, not shown
+                continue
             evidence = runtime.evidence(image, box).as_dict() if flagged else {}
             detection = {
                 "id": contact_id,
@@ -432,6 +441,7 @@ def analyze_sync(
             },
             "images": output,
             "timing_ms": round((time.perf_counter() - started) * 1000, 1),
+            "hidden_candidates": hidden_candidates,
             "packs": {
                 "json": f"/api/packs/{survey_id}/evidence_pack.json",
                 "html": f"/api/packs/{survey_id}/evidence_pack.html",
