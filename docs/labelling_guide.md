@@ -115,6 +115,27 @@ Annotate visible evidence without adding imagined boundaries.
 
 In **UXO mode**, the adopted Cenos convention picks contacts larger than **1.0 m in any dimension**. This is not a universal ghost-gear annotation cutoff. UXO assessment must not replace individual picks with a boulder-field classification or automatically discard `rock_boulder` contacts; the model may rank them.
 
+### 4.1 Box convention: recommendation and the public datasets (2026-11-08)
+
+**Recommendation (team to confirm):** box the object only, shadow excluded; record shadow
+evidence separately. Reasons: (1) the evidence module (`netsight.evidence`) measures the shadow
+beyond the box's far-range edge, so a box that already contains the shadow hides it; (2) the
+public datasets disagree, and mixed conventions turn correct detections into scored misses at
+IoU 0.5 (measured below).
+
+| Dataset | What the boxes cover (as observed) | Consequence |
+|---|---|---|
+| GhostVision (most recordings) | Trap/pot, roughly square (median aspect 0.9-1.1) | Reference convention |
+| GhostVision Contact | Boxes 1.32x wider than tall | Pixel-geometry (sensor) shift, not a labelling choice; flagged by the geometry gate |
+| SubPipe | Seabed beside the pipe, not the pipe + shadow the model finds | AP at IoU 0.5 near 0 for v0.1, 0.52 at IoU 0.3; report SubPipe at IoU 0.3 until relabelled |
+| AquaScan | Human-sized targets, elongated (aspect 2-4) | Consistent within the dataset |
+| Mine detection | MILCO/NOMBO, aspect ~1.6-1.9; shadow inclusion not documented | Check a sample before merging conventions |
+| SCTD | Wrecks / planes / people, varied | Research-only; consistent within the dataset |
+| NOAA chips | 10 m square around the charted position | Candidates only: extent must be redrawn in review |
+
+Relabelling to one convention uses the pre-labelling route: model proposal -> SAM2 tightening ->
+human accept/adjust/reject.
+
 ## 5. Fields recorded per label
 
 | Field | What to record |
