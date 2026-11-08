@@ -131,8 +131,10 @@ def survey_detections(pred_dir: Path, set_name: str, group: str | None = None) -
     )
 
 
-def validation_recall(pred_dir: Path, budget: float) -> tuple[float, tuple[float, float]]:
-    """Estimate pooled recall using a separate budget threshold per validation set."""
+def validation_recall(
+    pred_dir: Path, budget: float, envelope_set: str | None = None
+) -> tuple[float, tuple[float, float]]:
+    """Recall under the same budget rule on validation surveys of the same kind of data."""
     from netsight.detect.evaluation import match_detections
     from netsight.detect.operating_run import count_threshold
     from netsight.trust.bounds import clopper_pearson
@@ -141,6 +143,8 @@ def validation_recall(pred_dir: Path, budget: float) -> tuple[float, tuple[float
     successes = 0
     objects = 0
     for name in _validation_names(pred_dir):
+        if envelope_set is not None and name != f"val_{envelope_set}":
+            continue
         predictions, ground_truth = _load_set(pred_dir / f"{name}.npz")
         if not predictions:
             continue
@@ -158,9 +162,17 @@ def validation_recall(pred_dir: Path, budget: float) -> tuple[float, tuple[float
 
 
 def geometry_claim(
-    pred_dir: Path, survey_boxes: FloatArray, survey_scores: FloatArray
+    pred_dir: Path,
+    survey_boxes: FloatArray,
+    survey_scores: FloatArray,
+    envelope_set: str | None = None,
 ) -> ClaimDecision:
-    """Compare survey pixel geometry with validation-group profiles."""
+    """Compare survey pixel geometry with validation-group profiles.
+
+    Box aspect also depends on the object type (pipes are long, pots are square), so the
+    envelope must come from validation surveys of the same kind of data (`envelope_set`, e.g.
+    "ghostvision" for a GhostVision recording); pooling all datasets makes it meaningless.
+    """
     from netsight.trust.applicability import ClaimDecision
     from netsight.trust.geometry_gate import (
         AspectProfile,
@@ -170,6 +182,8 @@ def geometry_claim(
 
     profiles = []
     for name in _validation_names(pred_dir):
+        if envelope_set is not None and name != f"val_{envelope_set}":
+            continue
         path = pred_dir / f"{name}.npz"
         predictions, _ = _load_set(path)
         groups = _groups(path, len(predictions))
@@ -272,11 +286,12 @@ def _run(args: argparse.Namespace) -> str:
     survey = survey_detections(args.preds, args.set_name, args.group)
     boxes, scores = _flatten(survey.predictions)
     threshold = float(count_threshold(scores, survey.n_images, args.budget))
-    recall, recall_ci = validation_recall(args.preds, args.budget)
-    claim = geometry_claim(args.preds, boxes, scores)
+    envelope_set = args.envelope_set or args.set_name.removesuffix("_shift")
+    claim = geometry_claim(args.preds, boxes, scores, envelope_set)
+    recall, recall_ci = validation_recall(args.preds, args.budget, envelope_set)
     contacts = _contacts(survey, args.set_name, threshold, calibrator)
     operating = OperatingSummary(
-        method="count_threshold",
+        method="label-free count threshold",
         threshold=threshold,
         budget_fa_per_unit=args.budget,
         unit="image",
@@ -319,6 +334,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--ledger", type=Path)
     parser.add_argument("--created")
+    parser.add_argument(
+        "--envelope-set", help="validation set defining the geometry envelope (default: --set)"
+    )
     args = parser.parse_args()
     with redirect_stdout(io.StringIO()):
         summary = _run(args)

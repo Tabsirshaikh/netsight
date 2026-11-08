@@ -72,7 +72,7 @@ def _canonical(pack: dict) -> bytes:
 
 def _number(value: float) -> str:
     """Format a number without locale-dependent output."""
-    return format(value, ".6g")
+    return format(value, ".3g")
 
 
 def _summary(
@@ -84,6 +84,13 @@ def _summary(
     sentences = [
         f"{count} contacts listed.",
         (
+            f"At most {_number(operating.budget_fa_per_unit)} flagged contact(s) per "
+            f"{operating.unit} ({operating.flagged} flagged, threshold "
+            f"{_number(operating.threshold)}). False alarms are a subset of the flagged "
+            "contacts, so they cannot exceed this budget on this survey."
+        )
+        if "count" in operating.method.lower()
+        else (
             f"False-alarm budget: {_number(operating.budget_fa_per_unit)} per "
             f"{operating.unit}, targeted using {operating.method} at threshold "
             f"{_number(operating.threshold)}. No formal budget assurance is supplied "
