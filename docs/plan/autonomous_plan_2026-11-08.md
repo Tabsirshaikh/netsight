@@ -106,3 +106,8 @@ End with a progress summary for the user.
   too big on 2.5x smaller targets (pred median 34 px vs GT 18 px; ~60% of loss is box size).
   v0.3 = v0.2 + random zoom 0.5-1.5x training started (~3 h). Per-dataset fine-tune postponed
   until the better base is known.
+- 12:30 v0.3 (zoom aug) rejected on paired test (worse on mine, GhostVision, Contact, SubPipe);
+  validation sets too small to pick epochs (mine 30 objects). v0.4 = v0.2 + weight EMA training.
+  Test B (test_b_resampling.md): correcting Contact's pixel geometry (rows x1.32, x1.5) lifts
+  AP50 0.175 -> 0.368; wrong-way control ~no gain; x1.5 hurts most validation sets -> correction
+  must be per survey from sonar metadata. Track 2 (resampling module) justified.
