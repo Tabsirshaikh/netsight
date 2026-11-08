@@ -58,8 +58,13 @@ from netsight.models.manifest import (
 from netsight.trust.provenance import Ledger
 
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
-DATASET_IDS = {"mine": "mine_detection_sss", "ghostvision": "ghostvision_crabpot",
-               "aquascan": "aquascan_1k", "subpipe": "subpipe_mini2", "sctd": "sctd"}
+DATASET_IDS = {
+    "mine": "mine_detection_sss",
+    "ghostvision": "ghostvision_crabpot",
+    "aquascan": "aquascan_1k",
+    "subpipe": "subpipe_mini2",
+    "sctd": "sctd",
+}
 
 
 def build_splits(root: Path) -> dict:
@@ -72,22 +77,42 @@ def build_splits(root: Path) -> dict:
         dropped.extend(f"{s.dataset_id}:{s.member}" for s in bad)
         return kept
 
-    mine = readable(read_yolo_zip([raw / "mine_detection_sss" / f"{y}.zip" for y in MINE_YEARS],
-                         "mine_detection_sss", ["MILCO", "NOMBO"]))
-    gv = readable(read_ghostvision_zip(
-        raw / "ghostvision_crabpot" / "GhostVision_DatasetAndModels.zip"))
+    mine = readable(
+        read_yolo_zip(
+            [raw / "mine_detection_sss" / f"{y}.zip" for y in MINE_YEARS],
+            "mine_detection_sss",
+            ["MILCO", "NOMBO"],
+        )
+    )
+    gv = readable(
+        read_ghostvision_zip(raw / "ghostvision_crabpot" / "GhostVision_DatasetAndModels.zip")
+    )
     m = group_split(mine, test_groups={"2015", "2021"}, val_groups={"2017"})
     shift = [s for s in gv if s.group == "Contact"]  # targets 2.5x smaller: shifted test set
-    g = group_split([s for s in gv if s.group != "Contact"],
-                    test_groups={"Rec9", "Rec14", "Rec8"}, val_groups={"Rec13", "Rec2"})
-    aq = readable(read_yolo_zip([raw / "aquascan_1k" / "AquaScan-1K.zip"], "aquascan_1k", ["Human"],
-                       group_fn=aquascan_group))
-    a = group_split(aq, test_groups={"2025-11-23", "13SEP25"},
-                    val_groups={"2025-06-29", "2025-06-15"})
-    sp = readable(read_coco_zip(raw / "subpipe_mini2" / "SubPipeMini2.zip", "subpipe_mini2",
-                       group_fn=subpipe_group))
-    p = ordered_group_split(sp, n_val=2, n_test=3, gap=1,
-                            key=lambda grp: int(grp[1:]) if grp[1:].isdigit() else -1)
+    g = group_split(
+        [s for s in gv if s.group != "Contact"],
+        test_groups={"Rec9", "Rec14", "Rec8"},
+        val_groups={"Rec13", "Rec2"},
+    )
+    aq = readable(
+        read_yolo_zip(
+            [raw / "aquascan_1k" / "AquaScan-1K.zip"],
+            "aquascan_1k",
+            ["Human"],
+            group_fn=aquascan_group,
+        )
+    )
+    a = group_split(
+        aq, test_groups={"2025-11-23", "13SEP25"}, val_groups={"2025-06-29", "2025-06-15"}
+    )
+    sp = readable(
+        read_coco_zip(
+            raw / "subpipe_mini2" / "SubPipeMini2.zip", "subpipe_mini2", group_fn=subpipe_group
+        )
+    )
+    p = ordered_group_split(
+        sp, n_val=2, n_test=3, gap=1, key=lambda grp: int(grp[1:]) if grp[1:].isdigit() else -1
+    )
     sctd_zip = raw / "research_only" / "sctd" / "SCTD2.0_VOC2007.zip"
     sc = readable(read_voc_zip(sctd_zip, "sctd")) if sctd_zip.exists() else []
     trainval = sorted((s for s in sc if s.source_split != "test"), key=lambda s: s.member)
@@ -96,10 +121,21 @@ def build_splits(root: Path) -> dict:
     sc_test = [s for s in sc if s.source_split == "test"]
     return {
         "train": m["train"] + g["train"] + a["train"] + p["train"] + sc_train,
-        "val": {"mine": m["val"], "ghostvision": g["val"], "aquascan": a["val"],
-                "subpipe": p["val"], "sctd": sc_val},
-        "test": {"mine": m["test"], "ghostvision": g["test"], "ghostvision_shift": shift,
-                 "aquascan": a["test"], "subpipe": p["test"], "sctd": sc_test},
+        "val": {
+            "mine": m["val"],
+            "ghostvision": g["val"],
+            "aquascan": a["val"],
+            "subpipe": p["val"],
+            "sctd": sc_val,
+        },
+        "test": {
+            "mine": m["test"],
+            "ghostvision": g["test"],
+            "ghostvision_shift": shift,
+            "aquascan": a["test"],
+            "subpipe": p["test"],
+            "sctd": sc_test,
+        },
         "dropped_unreadable": dropped,
     }
 
@@ -118,8 +154,9 @@ def subsample(samples, n: int, rng: np.random.Generator):
 def evaluate(model, processor, samples, tile_px: int, cache: ImageCache, device: str) -> dict:
     preds, gts = [], []
     for s in samples:
-        boxes, scores = predict_image(model, processor, cache.get(s), tile_px=tile_px,
-                                      device=device)
+        boxes, scores = predict_image(
+            model, processor, cache.get(s), tile_px=tile_px, device=device
+        )
         preds.append((boxes, scores))
         gts.append(s.boxes)
     m = match_detections(preds, gts)
@@ -138,8 +175,9 @@ def evaluate(model, processor, samples, tile_px: int, cache: ImageCache, device:
 
 def _git_commit() -> str:
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
-                              text=True, check=True).stdout.strip()
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
@@ -154,16 +192,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--neg-ratio", type=float, default=0.5)
     ap.add_argument("--val-images", type=int, default=250, help="per dataset, per evaluation")
-    ap.add_argument("--patience", type=int, default=3,
-                    help="stop after this many validations without improvement (0: never)")
-    ap.add_argument("--min-share", type=float, default=0.15,
-                    help="minimum share of each epoch's tiles per dataset")
-    ap.add_argument("--max-repeat", type=int, default=4,
-                    help="max times a small dataset's tiles are repeated to reach --min-share")
+    ap.add_argument(
+        "--patience",
+        type=int,
+        default=3,
+        help="stop after this many validations without improvement (0: never)",
+    )
+    ap.add_argument(
+        "--min-share",
+        type=float,
+        default=0.15,
+        help="minimum share of each epoch's tiles per dataset",
+    )
+    ap.add_argument(
+        "--max-repeat",
+        type=int,
+        default=4,
+        help="max times a small dataset's tiles are repeated to reach --min-share",
+    )
     ap.add_argument("--checkpoint", default=PRODUCT_CHECKPOINT)
-    ap.add_argument("--init-from", default=None,
-                    help="start from a trained NetSight model folder (fine-tuning)")
+    ap.add_argument(
+        "--init-from", default=None, help="start from a trained NetSight model folder (fine-tuning)"
+    )
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--scale-aug",
+        type=float,
+        nargs=2,
+        metavar=("LO", "HI"),
+        help="random zoom range for training tiles, e.g. 0.5 1.5",
+    )
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--model-id", default=None, help="name recorded in the model label")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
@@ -201,29 +259,58 @@ def main(argv: list[str] | None = None) -> int:
     opt = make_optimizer(model, args.lr)
     share = {"min_share": args.min_share, "max_repeat": args.max_repeat}
     # size the LR schedule from the tiles actually available, not from the --max-tiles cap
-    n_tiles = len(balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
-                                 max_tiles=args.max_tiles, seed=args.seed, **share))
+    n_tiles = len(
+        balanced_tiles(
+            splits["train"],
+            args.tile,
+            neg_ratio=args.neg_ratio,
+            max_tiles=args.max_tiles,
+            seed=args.seed,
+            **share,
+        )
+    )
     steps_per_epoch = max(1, n_tiles // args.batch)
     total = steps_per_epoch * args.epochs
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10)))
+        opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10))
+    )
     log = open(out / "train_log.jsonl", "a", encoding="utf-8")
     best, history, step = -1.0, [], 0
     stopper = EarlyStopper(args.patience) if args.patience > 0 else None
     for epoch in range(args.epochs):
-        tiles = balanced_tiles(splits["train"], args.tile, neg_ratio=args.neg_ratio,
-                               max_tiles=args.max_tiles, seed=args.seed + epoch, **share)
-        ds = TileDataset(splits["train"], tiles, augment=True, seed=args.seed + epoch,
-                         cache=PixelCache(pixel_dir) if use_pixels else ImageCache(256))
-        loader = DataLoader(ds, batch_size=args.batch, shuffle=True, collate_fn=collate,
-                            num_workers=args.workers, pin_memory=device == "cuda",
-                            prefetch_factor=4 if args.workers else None,
-                            persistent_workers=False, drop_last=True)
+        tiles = balanced_tiles(
+            splits["train"],
+            args.tile,
+            neg_ratio=args.neg_ratio,
+            max_tiles=args.max_tiles,
+            seed=args.seed + epoch,
+            **share,
+        )
+        ds = TileDataset(
+            splits["train"],
+            tiles,
+            augment=True,
+            seed=args.seed + epoch,
+            scale_range=tuple(args.scale_aug) if args.scale_aug else None,
+            cache=PixelCache(pixel_dir) if use_pixels else ImageCache(256),
+        )
+        loader = DataLoader(
+            ds,
+            batch_size=args.batch,
+            shuffle=True,
+            collate_fn=collate,
+            num_workers=args.workers,
+            pin_memory=device == "cuda",
+            prefetch_factor=4 if args.workers else None,
+            persistent_workers=False,
+            drop_last=True,
+        )
         model.train()
         t0, losses = time.time(), []
         for pixels, labels in loader:
-            labels = [{k: v.to(device, non_blocking=True) for k, v in lab.items()}
-                      for lab in labels]
+            labels = [
+                {k: v.to(device, non_blocking=True) for k, v in lab.items()} for lab in labels
+            ]
             with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
                 loss = model(pixel_values=pixels.to(device, non_blocking=True), labels=labels).loss
             if not torch.isfinite(loss):
@@ -237,22 +324,45 @@ def main(argv: list[str] | None = None) -> int:
             step += 1
             if step % 50 == 0:
                 rate = len(losses) * args.batch / (time.time() - t0)
-                log.write(json.dumps({"epoch": epoch, "step": step, "loss": np.mean(losses[-50:]),
-                                      "tiles_per_s": rate}) + "\n")
+                log.write(
+                    json.dumps(
+                        {
+                            "epoch": epoch,
+                            "step": step,
+                            "loss": np.mean(losses[-50:]),
+                            "tiles_per_s": rate,
+                        }
+                    )
+                    + "\n"
+                )
                 log.flush()
         last = epoch == args.epochs - 1
         if (epoch + 1) % args.eval_every and not last:
-            history.append({"epoch": epoch, "train_loss": float(np.mean(losses)),
-                            "train_tiles": len(tiles), "seconds": time.time() - t0})
+            history.append(
+                {
+                    "epoch": epoch,
+                    "train_loss": float(np.mean(losses)),
+                    "train_tiles": len(tiles),
+                    "seconds": time.time() - t0,
+                }
+            )
             log.write(json.dumps(history[-1]) + "\n")
             log.flush()
             continue
-        metrics = {k: evaluate(model, processor, v, args.tile, cache, device)
-                   for k, v in val.items()}
+        metrics = {
+            k: evaluate(model, processor, v, args.tile, cache, device) for k, v in val.items()
+        }
         score = float(np.nanmean([m["ap50"] for m in metrics.values()]))
-        history.append({"epoch": epoch, "train_loss": float(np.mean(losses)),
-                        "train_tiles": len(tiles), "val": metrics, "val_mean_ap50": score,
-                        "seconds": time.time() - t0})
+        history.append(
+            {
+                "epoch": epoch,
+                "train_loss": float(np.mean(losses)),
+                "train_tiles": len(tiles),
+                "val": metrics,
+                "val_mean_ap50": score,
+                "seconds": time.time() - t0,
+            }
+        )
         log.write(json.dumps(history[-1]) + "\n")
         log.flush()
         if score > best:
@@ -266,26 +376,56 @@ def main(argv: list[str] | None = None) -> int:
     from transformers import DFineForObjectDetection
 
     model = DFineForObjectDetection.from_pretrained(out / "model").to(device)
-    test = {k: evaluate(model, processor, v, args.tile, cache, device)
-            for k, v in splits["test"].items()}
-    config = {**vars(args), "device": device, "net_input": 640, "overlap": 0.25,
-              "full_image_pass": True}
-    (out / "metrics.json").write_text(json.dumps(
-        {"config": config, "best_val_mean_ap50": best, "history": history, "test": test,
-         "dropped_unreadable_images": splits["dropped_unreadable"]},
-        indent=2, default=float), encoding="utf-8")
+    test = {
+        k: evaluate(model, processor, v, args.tile, cache, device)
+        for k, v in splits["test"].items()
+    }
+    config = {
+        **vars(args),
+        "device": device,
+        "net_input": 640,
+        "overlap": 0.25,
+        "full_image_pass": True,
+    }
+    (out / "metrics.json").write_text(
+        json.dumps(
+            {
+                "config": config,
+                "best_val_mean_ap50": best,
+                "history": history,
+                "test": test,
+                "dropped_unreadable_images": splits["dropped_unreadable"],
+            },
+            indent=2,
+            default=float,
+        ),
+        encoding="utf-8",
+    )
     manifest = build_training_manifest(
         inherited_dataset_ids(sorted(keep), args.init_from),
         load_register(default_register_path()),
         model_id=args.model_id
         or f"dfine-s-pilot-{'+'.join(chosen)}-tile{args.tile}-seed{args.seed}",
-        code_version=_git_commit(), config=config)
-    write_manifest(manifest, out / "model",
-                   ledger=Ledger(data_dir() / "provenance" / "models.jsonl"))
-    print(json.dumps({"tile": args.tile, "best_val_mean_ap50": best,
-                      "test": {k: {kk: v[kk] for kk in ("ap50", "ap50_small",
-                                                       "recall_at_1_fp_per_image")}
-                               for k, v in test.items()}}, indent=2, default=float))
+        code_version=_git_commit(),
+        config=config,
+    )
+    write_manifest(
+        manifest, out / "model", ledger=Ledger(data_dir() / "provenance" / "models.jsonl")
+    )
+    print(
+        json.dumps(
+            {
+                "tile": args.tile,
+                "best_val_mean_ap50": best,
+                "test": {
+                    k: {kk: v[kk] for kk in ("ap50", "ap50_small", "recall_at_1_fp_per_image")}
+                    for k, v in test.items()
+                },
+            },
+            indent=2,
+            default=float,
+        )
+    )
     return 0
 
 

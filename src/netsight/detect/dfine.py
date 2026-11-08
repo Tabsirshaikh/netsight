@@ -80,8 +80,9 @@ def to_pixels(crops: Sequence[np.ndarray], size: int = NET_INPUT) -> torch.Tenso
         if not a.flags.writeable:  # memory-mapped cache pages are read-only
             a = a.copy()
         t = torch.from_numpy(a).float().div_(255.0)[None, None]
-        t = torch.nn.functional.interpolate(t, size=(size, size), mode="bilinear",
-                                            align_corners=False, antialias=True)
+        t = torch.nn.functional.interpolate(
+            t, size=(size, size), mode="bilinear", align_corners=False, antialias=True
+        )
         out.append(t[0].expand(3, -1, -1))
     return torch.stack(out)
 
@@ -89,10 +90,55 @@ def to_pixels(crops: Sequence[np.ndarray], size: int = NET_INPUT) -> torch.Tenso
 def _targets(boxes: np.ndarray, h: int, w: int) -> dict:
     """Tile-pixel boxes -> D-FINE training targets (normalised centre x, y, width, height)."""
     b = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
-    cxcywh = np.column_stack([(b[:, 0] + b[:, 2]) / 2 / w, (b[:, 1] + b[:, 3]) / 2 / h,
-                              (b[:, 2] - b[:, 0]) / w, (b[:, 3] - b[:, 1]) / h])
-    return {"class_labels": torch.zeros(len(b), dtype=torch.long),
-            "boxes": torch.from_numpy(cxcywh.astype(np.float32)).reshape(-1, 4)}
+    cxcywh = np.column_stack(
+        [
+            (b[:, 0] + b[:, 2]) / 2 / w,
+            (b[:, 1] + b[:, 3]) / 2 / h,
+            (b[:, 2] - b[:, 0]) / w,
+            (b[:, 3] - b[:, 1]) / h,
+        ]
+    )
+    return {
+        "class_labels": torch.zeros(len(b), dtype=torch.long),
+        "boxes": torch.from_numpy(cxcywh.astype(np.float32)).reshape(-1, 4),
+    }
+
+
+def rescale(
+    crop: np.ndarray,
+    boxes: np.ndarray,
+    factor: float,
+    rng: np.random.Generator,
+    *,
+    min_visible: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Zoom a tile by `factor`, keeping its size, so objects appear smaller or larger.
+
+    Zoom-out pads with the tile's median (no mirrored, unlabelled copies of objects); zoom-in
+    takes a random window. If the window would cut an object to less than `min_visible` of its
+    area the tile is returned unchanged: a half-visible object labelled as background would
+    teach the wrong thing.
+    """
+    from scipy.ndimage import zoom
+
+    h, w = crop.shape
+    z = zoom(crop, factor, order=1)
+    zb = boxes.astype(np.float64) * factor
+    zh, zw = z.shape
+    if factor < 1:
+        out = np.full((h, w), float(np.median(crop)), dtype=crop.dtype)
+        oy, ox = int(rng.integers(0, h - zh + 1)), int(rng.integers(0, w - zw + 1))
+        out[oy : oy + zh, ox : ox + zw] = z
+        return out, zb + [ox, oy, ox, oy]
+    oy, ox = int(rng.integers(0, zh - h + 1)), int(rng.integers(0, zw - w + 1))
+    moved = zb - [ox, oy, ox, oy]
+    clipped = np.clip(moved, 0, [w, h, w, h])
+    area = np.prod(np.maximum(moved[:, 2:] - moved[:, :2], 0), axis=1)
+    kept = np.prod(np.maximum(clipped[:, 2:] - clipped[:, :2], 0), axis=1)
+    visible = np.divide(kept, area, out=np.zeros_like(kept), where=area > 0)
+    if np.any((visible > 0) & (visible < min_visible)):
+        return crop, boxes
+    return z[oy : oy + h, ox : ox + w], clipped[visible >= min_visible]
 
 
 class TileDataset(Dataset):
@@ -110,9 +156,11 @@ class TileDataset(Dataset):
         augment: bool,
         seed: int = 0,
         cache: ImageCache | None = None,
+        scale_range: tuple[float, float] | None = None,
     ) -> None:
         self.samples, self.tiles = samples, tiles
         self.augment, self.seed = augment, seed
+        self.scale_range = scale_range  # e.g. (0.5, 1.5): random zoom, half of the items
         self.cache = cache or ImageCache()
 
     def __len__(self) -> int:
@@ -132,6 +180,11 @@ class TileDataset(Dataset):
             if rng.random() < 0.5:  # along-track reversal
                 crop = crop[::-1, :]
                 boxes[:, [1, 3]] = h - boxes[:, [3, 1]]
+            if self.scale_range is not None and rng.random() < 0.5:  # target-size change
+                lo, hi = self.scale_range
+                crop, boxes = rescale(
+                    crop, boxes, float(np.exp(rng.uniform(np.log(lo), np.log(hi)))), rng
+                )
             crop = crop * rng.uniform(0.8, 1.2) + rng.uniform(-15, 15)  # gain change
         crop = np.clip(crop, 0, 255).astype(np.uint8)
         return to_pixels([crop])[0], _targets(boxes, h, w)
@@ -190,16 +243,19 @@ def predict_image(
     if full_image and full_image_pass_allowed(w, h, n_tiles=len(tiles)):
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device == "cuda"):
             out = model(pixel_values=to_pixels([image]).to(device))
-        (r,) = processor.post_process_object_detection(out, threshold=threshold,
-                                                       target_sizes=[(h, w)])
+        (r,) = processor.post_process_object_detection(
+            out, threshold=threshold, target_sizes=[(h, w)]
+        )
         full = _clip(r, h, w)
-    boxes, scores, _ = merge_detections(per_tile, iou_threshold=0.5, class_agnostic=True,
-                                        full_image=full)
+    boxes, scores, _ = merge_detections(
+        per_tile, iou_threshold=0.5, class_agnostic=True, full_image=full
+    )
     return boxes[:max_detections], np.clip(scores[:max_detections], 0.0, 1.0)
 
 
-def make_optimizer(model, lr: float, *, backbone_lr_factor: float = 0.1,
-                   weight_decay: float = 1e-4):
+def make_optimizer(
+    model, lr: float, *, backbone_lr_factor: float = 0.1, weight_decay: float = 1e-4
+):
     backbone = [p for n, p in model.named_parameters() if "backbone" in n and p.requires_grad]
     rest = [p for n, p in model.named_parameters() if "backbone" not in n and p.requires_grad]
     return torch.optim.AdamW(
