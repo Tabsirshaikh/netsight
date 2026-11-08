@@ -63,3 +63,9 @@ SubPipe, and needs a look at the labels.
 Lesson: validation sets are too small to choose epochs (mine 30 objects, SCTD 41; AP swings
 ~0.08 by chance), so validation gains do not carry to test. Next: v0.4 = v0.2 + weight EMA
 (decay 0.9998, as in the official D-FINE recipe) to make the chosen weights less noise-driven.
+
+Label check (GhostVision ground truth per recording): median box sides range 16-73 px and the
+training recordings include small targets (BC 16 px, baycove 22 px), so object size alone is not
+new to the model. Contact is the only recording whose boxes are clearly wider than tall (median
+aspect 1.32 vs 0.92-1.07 elsewhere), pointing to a different sensor or along-track sampling: a
+genuine sensor shift, which is what the applicability gate must flag rather than a model fix.
