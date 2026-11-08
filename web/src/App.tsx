@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { lazy, Suspense, useRef } from 'react';
 import { useGSAP, refreshStory, setupLenis } from './lib/gsap';
 import { content } from './content';
 import { Cursor } from './components/Cursor';
@@ -15,6 +15,8 @@ import { S08Curve } from './sections/S08Curve';
 import { S09Ledger } from './sections/S09Ledger';
 import { S10CTA } from './sections/S10CTA';
 import { VideoSection } from './components/VideoSection';
+
+const Dashboard = lazy(() => import('./dashboard/Dashboard'));
 
 export default function App() {
   const scope = useRef<HTMLDivElement>(null);
@@ -40,18 +42,13 @@ export default function App() {
 
   if (dashboard) {
     return (
-      <div ref={scope} className="dashboard-placeholder">
-        <a className="back-link mono" href="/">← {content.ui.back}</a>
-        <p className="eyebrow">{content.ui.pending}</p>
-        <h1>{content.ui.dashboardTitle}</h1>
-        <p className="body-copy">{content.ui.dashboardBody}</p>
-        <div className="dashboard-grid">
-          {content.ui.dashboardItems.map((item, i) => (
-            <div key={item}><span className="mono">0{i + 1}</span><h2>{item}</h2></div>
-          ))}
+      <Suspense fallback={
+        <div role="status" style={{ background: '#030d14', color: '#e4eeec', minHeight: '100vh', padding: '3rem' }}>
+          Opening NetSight research workspace…
         </div>
-        <p className="mono muted">{content.ui.dashboardStatus}</p>
-      </div>
+      }>
+        <Dashboard />
+      </Suspense>
     );
   }
 

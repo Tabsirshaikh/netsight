@@ -23,6 +23,7 @@ ml = [
     "safetensors>=0.4",
     "pillow>=10",
 ]
+app = ["fastapi>=0.115", "uvicorn>=0.30", "python-multipart>=0.0.9"]
 
 [project.scripts]
 netsight = "netsight.cli:main"
