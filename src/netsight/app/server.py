@@ -84,6 +84,33 @@ class Runtime:
 
 # The detector proposes up to 100 candidates per image (raw score >= 0.01) for ranking and
 # calibration. Unflagged candidates below this calibrated probability are not sent to the UI.
+SAMPLE_DATASETS = (
+    "ghostvision",
+    "ghostvision_shift",
+    "aquascan",
+    "mine",
+    "sctd",
+    "subpipe",
+    "ai4shipwrecks",
+)
+SAMPLES_PER_DATASET = 8  # 6 with labelled objects + 2 without, spread across surveys
+
+
+def pick_samples(pool: list, n: int = SAMPLES_PER_DATASET, n_empty: int = 2) -> list:
+    """Held-out samples spread evenly through the test set, mostly images with objects."""
+    pos = [s for s in pool if len(s.boxes)]
+    neg = [s for s in pool if not len(s.boxes)]
+
+    def spread(items: list, k: int) -> list:
+        if k <= 0 or not items:
+            return []
+        idx = np.unique(np.linspace(0, len(items) - 1, min(k, len(items))).round().astype(int))
+        return [items[i] for i in idx]
+
+    chosen = spread(pos, n - min(n_empty, len(neg)))
+    return chosen + spread(neg, n - len(chosen))
+
+
 MIN_SHOWN_PROBABILITY = 0.01
 
 
@@ -154,8 +181,8 @@ def default_runtime_factory() -> Runtime:
     splits = build_splits(root)["test"]
     pixels = PixelCache(root / "cache" / "pixels")
     samples: list[Sample] = []
-    for dataset in ("ghostvision", "ghostvision_shift", "aquascan", "mine", "sctd", "subpipe"):
-        for index, sample in enumerate(list(splits.get(dataset, []))[:2]):
+    for dataset in SAMPLE_DATASETS:
+        for index, sample in enumerate(pick_samples(list(splits.get(dataset, [])))):
             identity = f"{dataset}:{sample.member}:{sample.group}:{index}"
             samples.append(
                 Sample(
