@@ -122,3 +122,5 @@ GPU works; P7 anytime; P8 last.
   0.398, CI > 0; GhostVision +0.014 n.s.; forgets other sets). Mine fine-tune rejected (own test
   -0.022, CI < 0, while validation rose). P3 (trust_v0.4.md) and P7 (labelling guide 4.1) done.
   Next: test A second seed (k=10, 21) on GPU, then P8 summary.
+- 19:00 Test A seed 1 confirms the rising curve. P8 summary written
+  (docs/research/step2/summary_2026-11-08.md). All steps P1-P8 done.
