@@ -141,6 +141,17 @@ def build_splits(root: Path) -> dict:
     }
 
 
+def limit_groups(samples, n: int, seed: int):
+    """Keep the first n groups of each dataset in a seeded random order (subsets are nested)."""
+    out = []
+    for ds in sorted({s.dataset_id for s in samples}):
+        groups = sorted({s.group for s in samples if s.dataset_id == ds})
+        order = [groups[i] for i in np.random.default_rng(seed).permutation(len(groups))]
+        chosen = set(order[:n])
+        out += [s for s in samples if s.dataset_id == ds and s.group in chosen]
+    return out
+
+
 def subsample(samples, n: int, rng: np.random.Generator):
     """Up to n images, half with objects, for quick validation during training."""
     pos = [s for s in samples if len(s.boxes)]
@@ -217,6 +228,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
+        "--max-train-groups",
+        type=int,
+        default=0,
+        help="learning curve: train on this many recordings per dataset",
+    )
+    ap.add_argument("--group-seed", type=int, default=0)
+    ap.add_argument(
         "--ema", type=float, default=0.0, help="weight EMA decay (e.g. 0.9998); 0 = off"
     )
     ap.add_argument(
@@ -246,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     keep = {DATASET_IDS[d] for d in chosen}
     splits = build_splits(data_dir())
     splits["train"] = [s for s in splits["train"] if s.dataset_id in keep]
+    if args.max_train_groups:  # learning curve: nested random subsets of recordings/surveys
+        splits["train"] = limit_groups(splits["train"], args.max_train_groups, args.group_seed)
     for part in ("val", "test"):
         splits[part] = {k: v for k, v in splits[part].items() if k.split("_")[0] in chosen}
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
