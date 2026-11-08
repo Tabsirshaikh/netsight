@@ -114,3 +114,7 @@ GPU works; P7 anytime; P8 last.
   recordings calibrated. Pack text now states the count-threshold FA bound plainly; recall comes
   from the same dataset's validation surveys. User: weekly usage 86%; use GPT-6.1-sol (high for
   complex), verify, redo myself if not good enough.
+- 17:30 P1 done (test_a_learning_curve.md): RISING. GhostVision test AP50 0.269/0.251/0.332/0.369
+  for 2/5/10/21 recordings; Contact 0.074 -> 0.224. More surveys pay off -> Track 1 full effort.
+  P6 done (noaa_chips.md): 60 candidate chips from 3 NOAA mosaics (48 confirmed real); 1 m
+  pixels -> large objects only, human review required. Starting P2 (fine-tunes) on the GPU.
