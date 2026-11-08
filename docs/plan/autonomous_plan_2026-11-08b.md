@@ -101,3 +101,9 @@ GPU works; P7 anytime; P8 last.
 ## Progress log
 
 - 15:00 Plan written. Test A running.
+- 15:20 P6 changed: NCEI has no raw XTF for our top surveys, but has georeferenced side-scan
+  mosaics (GeoTIFF + .tfw, 1 m pixels, 455 kHz) for H12330 (23 confirmed contacts), H12357 (18),
+  H12890 (16), 40-70 MB each; downloading to raw/noaa/<survey>/TIFF. 1 m pixels suit large objects
+  (wrecks, obstructions), not crab-pot scale. GPT-6.1-sol drafting noaa_chips.py (contact lat/lon
+  -> pixel via mosaic CRS -> chips + candidate boxes) and geometry_gate.py (label-free pixel
+  aspect/size check from the detector's own boxes).
