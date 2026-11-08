@@ -157,7 +157,7 @@ datasets:
     files: []   # 3 files, ~1.14 GB per search snippet; names/sizes/md5 not retrieved
     format: "PNG exports from EdgeTech 2205 low-freq (520 kHz), 1728 px wide x variable height; 286 images, 28 wrecks; Thunder Bay NMS, Lake Huron"
     labels: "binary per-pixel masks (0 other, 1 shipwreck); 50/50 site-grouped train/test; 1728x1728 tiles stride 100 (2539 train / 1722 test)"
-    notes: "Deep Blue returned 403 to scripted fetch. Read licence in a browser and fetch files manually before any use."
+    notes: "Deep Blue returned 403 to scripted fetch. Files downloaded manually in a browser on 2026-11-08 (261 PNG + masks; official site split 12 train / 13 test sites) and converted to boxes by netsight.datasets.ai4shipwrecks. Licence still to be read on the Deep Blue page (hunt claimed CC0 1.0, unverified); research use only until then."
 
   - id: nksid
     title: "NanKai Sonar Image Dataset (NKSID)"

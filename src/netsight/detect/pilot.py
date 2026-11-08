@@ -19,6 +19,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from netsight.config import data_dir
+from netsight.datasets.ai4shipwrecks import site_of
 from netsight.datasets.detection import (
     aquascan_group,
     drop_unreadable,
@@ -58,6 +59,7 @@ from netsight.models.manifest import (
 )
 from netsight.trust.provenance import Ledger
 
+AI4S_VAL_SITES = {"Montana", "Heart_Failure"}  # 2 of the 12 official training sites
 MINE_YEARS = ("2010", "2015", "2017", "2018", "2021")
 DATASET_IDS = {
     "mine": "mine_detection_sss",
@@ -65,6 +67,7 @@ DATASET_IDS = {
     "aquascan": "aquascan_1k",
     "subpipe": "subpipe_mini2",
     "sctd": "sctd",
+    "ai4shipwrecks": "ai4shipwrecks",
 }
 
 
@@ -120,14 +123,24 @@ def build_splits(root: Path) -> dict:
     sc_val = trainval[::10]  # SCTD has no recording groups: official test + 10% val
     sc_train = [s for s in trainval if s not in sc_val]
     sc_test = [s for s in sc if s.source_split == "test"]
+    shipwreck_zip = raw / "ai4shipwrecks" / "AI4Shipwrecks-yolo.zip"
+    sw = (
+        readable(read_yolo_zip([shipwreck_zip], "ai4shipwrecks", ["shipwreck"], group_fn=site_of))
+        if shipwreck_zip.exists()
+        else []
+    )
+    sw_test = [s for s in sw if s.member.startswith("test/")]  # official split: 13 other sites
+    sw_val = [s for s in sw if s.member.startswith("train/") and s.group in AI4S_VAL_SITES]
+    sw_train = [s for s in sw if s.member.startswith("train/") and s.group not in AI4S_VAL_SITES]
     return {
-        "train": m["train"] + g["train"] + a["train"] + p["train"] + sc_train,
+        "train": m["train"] + g["train"] + a["train"] + p["train"] + sc_train + sw_train,
         "val": {
             "mine": m["val"],
             "ghostvision": g["val"],
             "aquascan": a["val"],
             "subpipe": p["val"],
             "sctd": sc_val,
+            "ai4shipwrecks": sw_val,
         },
         "test": {
             "mine": m["test"],
@@ -136,6 +149,7 @@ def build_splits(root: Path) -> dict:
             "aquascan": a["test"],
             "subpipe": p["test"],
             "sctd": sc_test,
+            "ai4shipwrecks": sw_test,
         },
         "dropped_unreadable": dropped,
     }
