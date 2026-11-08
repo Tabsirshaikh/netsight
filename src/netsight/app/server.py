@@ -328,6 +328,7 @@ def analyze_sync(
     profile: str,
     budget: float,
     tta: bool,
+    show_all: bool = False,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     bundle = runtime.models[model_key]
@@ -377,7 +378,7 @@ def analyze_sync(
             contact_number += 1
             contact_id = f"c{contact_number:05d}"
             flagged = bool(score >= threshold)
-            if not flagged and float(probability) < MIN_SHOWN_PROBABILITY:
+            if not show_all and not flagged and float(probability) < MIN_SHOWN_PROBABILITY:
                 hidden_candidates += 1  # near-zero candidates: used for the threshold, not shown
                 continue
             evidence = runtime.evidence(image, box).as_dict() if flagged else {}
@@ -564,6 +565,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
         profile: str = Form(default="general"),
         budget: float = Form(default=1.0),
         tta: bool = Form(default=True),
+        show_all: bool = Form(default=False),
     ) -> dict:
         if model not in {"general", "ghost-gear"}:
             raise HTTPException(422, "model must be general or ghost-gear.")
@@ -635,7 +637,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             try:
                 with anyio.CancelScope(shield=True):
                     return await anyio.to_thread.run_sync(
-                        analyze_sync, state, images, model, profile, budget, tta
+                        analyze_sync, state, images, model, profile, budget, tta, show_all
                     )
             except HTTPException:
                 raise

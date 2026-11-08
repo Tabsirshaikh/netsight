@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile>('general');
   const [budget, setBudget] = useState(1);
   const [tta, setTta] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -193,6 +194,7 @@ export default function Dashboard() {
     form.set('profile', profile);
     form.set('budget', String(budget));
     form.set('tta', String(tta));
+    form.set('show_all', String(showAll));
     const newUrls: string[] = [];
     try {
       const analysis = await api<Analysis>('/api/analyze', { method: 'POST', body: form, signal: controller.signal });
@@ -378,6 +380,8 @@ export default function Dashboard() {
             </label>
             <label className="ns-tta"><input type="checkbox" checked={tta} onChange={event => setTta(event.target.checked)} disabled={busy} />
               <span>Flip TTA<small>More views</small></span></label>
+            <label className="ns-tta"><input type="checkbox" checked={showAll} onChange={event => setShowAll(event.target.checked)} disabled={busy} />
+              <span>Show all candidates<small>Include near-zero boxes</small></span></label>
             <button className="ns-run" disabled={busy || !health || !files.length && !sampleIds.length} onClick={() => void runSurvey()}>
               {busy ? 'Analyzing…' : result ? 'Re-run survey ↗' : 'Analyze survey ↗'}
             </button>
