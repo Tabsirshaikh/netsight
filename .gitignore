@@ -26,3 +26,9 @@ runs/
 .env
 *.env
 .superpowers/
+
+# website
+web/node_modules/
+web/dist/
+web/video/node_modules/
+web/video/out/
