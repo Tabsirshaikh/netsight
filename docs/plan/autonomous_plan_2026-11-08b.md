@@ -118,3 +118,7 @@ GPU works; P7 anytime; P8 last.
   for 2/5/10/21 recordings; Contact 0.074 -> 0.224. More surveys pay off -> Track 1 full effort.
   P6 done (noaa_chips.md): 60 candidate chips from 3 NOAA mosaics (48 confirmed real); 1 m
   pixels -> large objects only, human review required. Starting P2 (fine-tunes) on the GPU.
+- 18:40 P2 done (finetune_v0.4.md): GhostVision fine-tune kept as specialist (Contact 0.256 ->
+  0.398, CI > 0; GhostVision +0.014 n.s.; forgets other sets). Mine fine-tune rejected (own test
+  -0.022, CI < 0, while validation rose). P3 (trust_v0.4.md) and P7 (labelling guide 4.1) done.
+  Next: test A second seed (k=10, 21) on GPU, then P8 summary.
