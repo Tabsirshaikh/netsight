@@ -1,0 +1,22 @@
+{
+  "name": "netsight-explainer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "build": "tsc --noEmit && remotion render src/index.ts Explainer out/explainer.mp4",
+    "preview": "remotion studio src/index.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.282",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.282"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "typescript": "5.7.3"
+  }
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "file": "public/img/sonar-wreck.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Create illustrative side-scan sonar artwork for NetSight, not a photograph and not a scientific validation result. Top-down elongated wreck-shaped return, broken structural ribs, slightly diagonal orientation in the right half, unmistakable adjacent dark acoustic shadow away from the central water-column gap. Horizontal acoustic return lines and gentle seabed ripples. Consistent art direction: near-black deep navy #030d14, muted sea-green seabed, restrained teal #6de2c3 echo highlights, very sparse warm sand #f4ab71 reflections. Fine analog scan texture, cinematic darkness with readable structures, precise and quiet. Center the subject within the middle square for portrait cropping. No lettering, detection rectangles, scores, logos, coordinates, divers or decorative HUD.",
+    "used_in": "S05Detections / SonarArtwork wreck"
+  },
+  {
+    "file": "public/img/sonar-person.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Illustrative side-scan sonar artwork, explicitly a synthetic acoustic interpretation rather than validation imagery. One small human-shaped acoustic return on an otherwise sparse seabed, no facial detail, clinical non-graphic presentation, a dark acoustic shadow extending away from a narrow nadir gap near the left edge. Horizontal return lines, subtle ripple pattern. NetSight art direction: deep navy #030d14, muted sea-green, low-intensity teal #6de2c3, a hint of warm sand #f4ab71 on the strongest echo. Subject centered for square and portrait crops, ample negative space, cinematic yet technically legible. No text, boxes, scores, logos or photographic underwater lighting.",
+    "used_in": "S05Detections / SonarArtwork person"
+  },
+  {
+    "file": "public/img/sonar-pot.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Synthetic side-scan sonar illustration of a single abandoned crab pot: bright rectangular wire mesh return, entrance opening, thin trailing rope line, adjoining dark acoustic shadow. Top-down acoustic image, horizontal waterfall scan texture, subtle seabed ripple breaks around the pot, narrow dark nadir near the left edge. NetSight palette: deep navy #030d14, muted green-gray sediment, restrained teal #6de2c3, warm sand #f4ab71 echo edges. Center pot inside the middle square for portrait cropping. Beautiful technical restraint, no invented scientific labels. No typography, detection boxes, confidence values, logos, fish or water bubbles.",
+    "used_in": "S05Detections / SonarArtwork pot"
+  },
+  {
+    "file": "public/img/sonar-contact.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Synthetic side-scan image illustrating a trap-like object recorded with a different acoustic sensor texture. Bright angular mesh trap, darker shadow on its outward side, fine horizontal scan-line noise with visibly coarser grain than conventional sonar artwork. Do not imply a real dataset capture. Deep navy #030d14 base, sea-green echo field, controlled teal #6de2c3 highlights and very sparse warm sand #f4ab71 accents. The object remains legible inside a central square and portrait crop, with dark peripheral negative space and a slim nadir toward the left. No numbers, text, bounding boxes, logos or photographic materials.",
+    "used_in": "S05Detections / SonarArtwork contact"
+  },
+  {
+    "file": "public/img/sonar-mine.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Illustrative synthetic side-scan sonar view of one compact rounded mine-like object on rippled seabed. Ambiguous compact acoustic return, short bright curved edge and a longer dark acoustic shadow; no asserted identification or scientific measurement. Top-down image built from horizontal echo lines, narrow nadir left of center. Consistent NetSight palette: deep navy #030d14, muted sea-green, restrained teal #6de2c3, faint warm sand #f4ab71 edge. Cinematic quiet, analog texture, center-weighted composition suitable for portrait crop. No labels, scores, boxes, logos, explosions, weapons diagrams or dramatic effects.",
+    "used_in": "S05Detections / SonarArtwork mine"
+  },
+  {
+    "file": "public/img/trust-water.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Very dark underwater atmospheric background for a technical trust-layer interface. Empty deep ocean with faint vertical light attenuation, barely visible seabed texture at bottom, broad dark negative space throughout. One restrained teal #6de2c3 acoustic glow, not a visible user interface; almost black navy #030d14 dominates, with muted green undertones and a tiny warm sand #f4ab71 reflection. Consistent cinematic analog grain, no bubbles or fantasy bioluminescence. No text, diagrams, statistics, objects, logos or simulated real measurements. Designed to sit at low opacity behind readable interface cards.",
+    "used_in": "S06Trust / OptionalAsset gate background"
+  },
+  {
+    "file": "public/img/geometry-seabed.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Synthetic acoustic seabed texture for explaining sonar pixel geometry. Broad horizontal return lines, regular curved sediment ripples and fine granular echo noise, central composition with a narrow dark nadir toward the left; no discrete objects because procedural vector geometry will be overlaid. Deep navy #030d14, muted sea-green, low teal #6de2c3 echo energy, a few warm sand #f4ab71 speckles. Technically restrained, cinematic, consistent with a deep-ocean research launch site. No text, labels, grids, boxes, statistics, perspective camera effects or photographic caustics.",
+    "used_in": "S07Geometry / SonarArtwork geometry background"
+  },
+  {
+    "file": "public/img/ledger-depth.webp",
+    "model": "gemini-3.1-flash-image",
+    "size": "1920x1080",
+    "prompt": "Abstract but physically plausible deep-ocean sediment field, very low contrast, for an evidence report background. Fine horizontal acoustic texture and softly layered seabed ridges receding into near-black navy #030d14. Restrained sea-green and teal #6de2c3, minute warm sand #f4ab71 echo glints. Calm precise research atmosphere, abundant clean dark negative space for interface overlay. Same analog grain and color grade as NetSight synthetic sonar stills. No documents, lettering, chain icons, UI, invented data, numerical scales, watermarks or objects.",
+    "used_in": "S09Ledger / OptionalAsset report background"
+  }
+]
