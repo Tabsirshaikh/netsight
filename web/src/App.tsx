@@ -1,25 +1,20 @@
-/**
- * Changed: compose the Part C storyline, retain the existing hero/sonar scenes,
- * update navigation, and unmount the superseded sections without deleting them.
- */
 import { useRef } from 'react';
 import { useGSAP, refreshStory, setupLenis } from './lib/gsap';
 import { content } from './content';
-import { partC } from './content.partC';
 import { Cursor } from './components/Cursor';
 import { DepthGauge } from './components/DepthGauge';
 import { SoundToggle } from './components/SoundToggle';
 import { S01Hero } from './sections/S01Hero';
 import { S02SideScan } from './sections/S02SideScan';
-import { ProblemSection } from './sections/ProblemSection';
-import { QuestionsSection } from './sections/QuestionsSection';
-import { EightStagesSection } from './sections/EightStagesSection';
-import { CompletenessSection } from './sections/CompletenessSection';
-import { ValidationSection } from './sections/ValidationSection';
-import { ContactSection } from './sections/ContactSection';
-import { NextSection } from './sections/NextSection';
+import { S03Pipeline } from './sections/S03Pipeline';
+import { S04Reality } from './sections/S04Reality';
+import { S05Detections } from './sections/S05Detections';
+import { S06Trust } from './sections/S06Trust';
+import { S07Geometry } from './sections/S07Geometry';
+import { S08Curve } from './sections/S08Curve';
+import { S09Ledger } from './sections/S09Ledger';
+import { S10CTA } from './sections/S10CTA';
 import { VideoSection } from './components/VideoSection';
-import './styles.partC.css';
 
 export default function App() {
   const scope = useRef<HTMLDivElement>(null);
@@ -65,27 +60,27 @@ export default function App() {
       <a className="skip-link" href="#story">{content.ui.skip}</a>
       <header className="site-header">
         <a href="#mission" className="wordmark" aria-label={content.ui.home}>
-          <span className="brand-symbol" aria-hidden="true">⌁</span>
-          {content.brand}<span className="brand-dot" />
+          <span className="brand-symbol" aria-hidden="true">⌁</span>{content.brand}<span className="brand-dot" />
         </a>
         <nav aria-label={content.ui.navLabel}>
-          <a href="#problem">{partC.nav.problem}</a>
-          <a href="#system">{partC.nav.system}</a>
-          <a href="#honest-test">{partC.nav.evidence}</a>
+          <a href="#mission">{content.ui.mission}</a>
+          <a href="#system">{content.ui.system}</a>
+          <a href="#honest-test">{content.ui.validation}</a>
         </nav>
         <SoundToggle />
       </header>
       <main id="story" tabIndex={-1}>
         <S01Hero />
-        <ProblemSection />
         <S02SideScan />
-        <QuestionsSection />
-        <EightStagesSection />
-        <CompletenessSection />
-        <ValidationSection />
-        <ContactSection />
+        <S03Pipeline />
+        <S04Reality />
+        <S05Detections />
+        <S06Trust />
+        <S07Geometry />
+        <S08Curve />
+        <S09Ledger />
         <VideoSection />
-        <NextSection />
+        <S10CTA />
       </main>
       <DepthGauge />
       <Cursor />
