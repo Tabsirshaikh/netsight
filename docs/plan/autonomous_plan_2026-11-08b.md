@@ -107,3 +107,10 @@ GPU works; P7 anytime; P8 last.
   (wrecks, obstructions), not crab-pot scale. GPT-6.1-sol drafting noaa_chips.py (contact lat/lon
   -> pixel via mosaic CRS -> chips + candidate boxes) and geometry_gate.py (label-free pixel
   aspect/size check from the detector's own boxes).
+- 16:20 P5+P4 done (GPT-drafted, Claude-reviewed): noaa_chips.py, geometry_gate.py,
+  demo/run_survey.py. Demo packs for v0.4 in runs/demo_v0.4 (ledger verifies). Found and fixed:
+  the geometry envelope must be per dataset (box aspect depends on object type); with it Contact
+  (aspect 1.25 vs 0.87-1.11) and mine 2015 (2.08 vs 1.49-1.74) come out indicative, normal
+  recordings calibrated. Pack text now states the count-threshold FA bound plainly; recall comes
+  from the same dataset's validation surveys. User: weekly usage 86%; use GPT-6.1-sol (high for
+  complex), verify, redo myself if not good enough.
