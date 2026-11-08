@@ -23,3 +23,15 @@ collecting more labelled surveys is worth the effort (Track 1 / v5). A rough ext
 Caveats: one random order (seed 0); runs with fewer recordings also trained for fewer steps
 (2 recordings: ~600 steps; 21: ~3750), which is how learning curves are usually run but mixes
 data and compute; 2 vs 5 recordings is within noise.
+
+## Second random order (group seed 1)
+
+| Training recordings | GhostVision AP50 seed 0 / seed 1 / mean | Contact AP50 seed 0 / seed 1 / mean |
+|---|---|---|
+| 5 | 0.251 / 0.273 / 0.262 | 0.116 / 0.109 / 0.113 |
+| 10 | 0.332 / 0.339 / 0.336 | 0.167 / 0.296 / 0.232 |
+| 21 (all; retrain) | 0.369 / 0.366 / 0.368 | 0.224 / 0.256 / 0.240 |
+
+The rise holds for both orders. Run-to-run noise at 21 recordings (same data, retrained): +-0.003
+on GhostVision, +-0.03 on Contact. Contact depends on *which* recordings are included (0.167 vs
+0.296 at 10): recordings that resemble its sensor help most, so collect **varied** surveys.
