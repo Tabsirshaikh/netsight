@@ -127,6 +127,18 @@ def _float_array(mosaic: Mosaic) -> np.ndarray:
     return np.ma.asarray(mosaic.array, dtype=np.float64).filled(np.nan)
 
 
+def _stretch(window: np.ndarray) -> np.ndarray:
+    """Scale finite values to uint8 by their own 1st-99th percentiles; non-finite -> 0."""
+    out = np.zeros(window.shape, dtype=np.uint8)
+    finite = np.isfinite(window)
+    if finite.any():
+        low, high = np.percentile(window[finite], [1, 99])
+        if high > low:
+            values = np.clip((window[finite] - low) / (high - low), 0, 1)
+            out[finite] = np.rint(values * 255).astype(np.uint8)
+    return out
+
+
 def make_chips(
     mosaic: Mosaic,
     contacts: Sequence[Contact],
@@ -189,7 +201,9 @@ def make_chips(
             fraction = float(finite[slices].mean())
             status = "ok" if fraction >= min_valid else "nodata"
             if status == "ok":
-                chip = scaled[slices].copy()
+                # Per-chip 1st-99th percentile stretch: a whole-mosaic stretch washes out
+                # bright or dark regions (seen on H12357), hiding the object for review.
+                chip = _stretch(data[slices])
         records.append(
             ChipRecord(
                 survey_id=contact.survey_id,
