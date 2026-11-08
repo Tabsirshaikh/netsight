@@ -43,6 +43,20 @@ def mask_to_boxes(mask: np.ndarray, *, close_px: int = 25, min_area_px: int = 30
     return np.asarray(boxes, dtype=float).reshape(-1, 4)
 
 
+def visible(image: np.ndarray, boxes: np.ndarray, *, dark_frac: float = 0.5) -> np.ndarray:
+    """Keep boxes that are not mostly near-black (wreck parts under the sonar, in the water
+    column, are labelled by the experts but are almost invisible: they confuse a detector)."""
+    img = np.asarray(image, dtype=float)
+    lit = img[img > 0]
+    ref = float(np.median(lit)) if lit.size else 0.0
+    keep = np.ones(len(boxes), dtype=bool)
+    for i, (x0, y0, x1, y1) in enumerate(boxes.astype(int)):
+        crop = img[y0:y1, x0:x1]
+        if crop.size and ref > 0 and (crop < 0.15 * ref).mean() > dark_frac:
+            keep[i] = False
+    return keep
+
+
 def to_yolo_lines(boxes: np.ndarray, width: int, height: int) -> str:
     rows = []
     for x0, y0, x1, y1 in boxes:
@@ -63,6 +77,12 @@ def convert(src: Path, out_zip: Path) -> dict[str, int]:
                 with Image.open(img_path) as im:
                     w, h = im.size
                 boxes = mask_to_boxes(mask)
+                with Image.open(img_path) as im:
+                    keep = visible(np.asarray(im.convert("L")), boxes)
+                counts["dropped_invisible"] = counts.get("dropped_invisible", 0) + int(
+                    (~keep).sum()
+                )
+                boxes = boxes[keep]
                 z.write(img_path, f"{split}/images/{img_path.name}")
                 z.writestr(f"{split}/labels/{img_path.stem}.txt", to_yolo_lines(boxes, w, h))
                 counts["images"] += 1

@@ -1,6 +1,6 @@
 import numpy as np
 
-from netsight.datasets.ai4shipwrecks import mask_to_boxes, site_of, to_yolo_lines
+from netsight.datasets.ai4shipwrecks import mask_to_boxes, site_of, to_yolo_lines, visible
 
 
 def test_site_of():
@@ -22,3 +22,10 @@ def test_empty_mask_and_yolo_line():
     assert mask_to_boxes(np.zeros((10, 10))).shape == (0, 4)
     line = to_yolo_lines(np.array([[0.0, 0.0, 50.0, 20.0]]), 100, 40)
     assert line == "0 0.250000 0.250000 0.500000 0.500000\n"
+
+
+def test_boxes_in_the_dark_water_column_are_dropped():
+    img = np.full((100, 200), 120, np.uint8)
+    img[:, :60] = 2  # near-black strip under the sonar
+    boxes = np.array([[5.0, 10.0, 50.0, 40.0], [100.0, 10.0, 150.0, 40.0]])
+    assert visible(img, boxes).tolist() == [False, True]
