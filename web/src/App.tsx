@@ -14,6 +14,7 @@ import { S07Geometry } from './sections/S07Geometry';
 import { S08Curve } from './sections/S08Curve';
 import { S09Ledger } from './sections/S09Ledger';
 import { S10CTA } from './sections/S10CTA';
+import { VideoSection } from './components/VideoSection';
 
 export default function App() {
   const scope = useRef<HTMLDivElement>(null);
@@ -78,6 +79,7 @@ export default function App() {
         <S07Geometry />
         <S08Curve />
         <S09Ledger />
+        <VideoSection />
         <S10CTA />
       </main>
       <DepthGauge />
