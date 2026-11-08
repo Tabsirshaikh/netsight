@@ -109,7 +109,7 @@ Annotate visible evidence without adding imagined boundaries.
 |---|---|
 | Boxes versus polygons | The general choice is **team decision pending**. |
 | `rubble_field` | Use a polygon/extent, not a single point. |
-| Object plus shadow | Whether to include the shadow within a box or polygon is **team decision pending**. Record relevant shadow evidence in remarks. |
+| Object plus shadow | **Decided 2026-11-08: shadow excluded** (object only). Record shadow evidence in remarks. |
 | Minimum annotation size | A general chip/pixel or physical-size minimum is **team decision pending**. |
 | Overlapping objects | Instance separation, overlapping geometry and occlusion rules are **team decisions pending**; flag ambiguous cases for review. |
 
@@ -117,7 +117,7 @@ In **UXO mode**, the adopted Cenos convention picks contacts larger than **1.0 m
 
 ### 4.1 Box convention: recommendation and the public datasets (2026-11-08)
 
-**Recommendation (team to confirm):** box the object only, shadow excluded; record shadow
+**Decision (team, 2026-11-08):** box the object only, shadow excluded; record shadow
 evidence separately. Reasons: (1) the evidence module (`netsight.evidence`) measures the shadow
 beyond the box's far-range edge, so a box that already contains the shadow hides it; (2) the
 public datasets disagree, and mixed conventions turn correct detections into scored misses at

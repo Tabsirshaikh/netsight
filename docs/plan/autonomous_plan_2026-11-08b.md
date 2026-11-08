@@ -124,3 +124,5 @@ GPU works; P7 anytime; P8 last.
   Next: test A second seed (k=10, 21) on GPU, then P8 summary.
 - 19:00 Test A seed 1 confirms the rising curve. P8 summary written
   (docs/research/step2/summary_2026-11-08.md). All steps P1-P8 done.
+- 19:20 Team decisions: box convention = object only, shadow excluded (labelling guide 4.1).
+  Data-request emails dropped (no time); new data must come from public sources + our tool.
