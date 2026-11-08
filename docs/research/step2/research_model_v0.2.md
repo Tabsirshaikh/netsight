@@ -49,3 +49,17 @@ Raw ECE 0.09-0.20 (mine worst at 0.200); own-dataset beta/Platt brings ECE to 0.
 sets. The pooled calibrator transfers worse for v0.2 on mine (ECE 0.092 vs 0.025 own): with SCTD
 in the pool, pooled calibration no longer fits the mine surveys. Per-dataset (or per-sensor)
 calibration is needed, and the applicability gate decides which applies.
+
+## v0.3 = v0.2 + random zoom 0.5-1.5x: rejected
+
+Best validation 0.560 (epoch 9) vs v0.2 0.529, but on test (paired, v0.3 - v0.2, 95% CI):
+GhostVision -0.047 (-0.076, -0.017), mine -0.032 (-0.060, -0.004), Contact -0.021 (-0.040,
+-0.004), SubPipe -0.092 (-0.147, -0.034); AquaScan +0.042 (-0.005, +0.091), SCTD +0.026.
+Zoom did not change box size on the Contact recording (median 35.7 px vs 34.3 px, GT 18 px), so
+the hypothesis "the model learnt the training object size" is not supported; a different box
+convention in that recording (tight vs loose boxes) is now the leading explanation, as for
+SubPipe, and needs a look at the labels.
+
+Lesson: validation sets are too small to choose epochs (mine 30 objects, SCTD 41; AP swings
+~0.08 by chance), so validation gains do not carry to test. Next: v0.4 = v0.2 + weight EMA
+(decay 0.9998, as in the official D-FINE recipe) to make the chosen weights less noise-driven.
