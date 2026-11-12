@@ -87,7 +87,7 @@ def to_pixels(crops: Sequence[np.ndarray], size: int = NET_INPUT) -> torch.Tenso
     return torch.stack(out)
 
 
-def _targets(boxes: np.ndarray, h: int, w: int) -> dict:
+def _targets(boxes: np.ndarray, h: int, w: int, label: int = 0) -> dict:
     """Tile-pixel boxes -> D-FINE training targets (normalised centre x, y, width, height)."""
     b = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
     cxcywh = np.column_stack(
@@ -99,9 +99,51 @@ def _targets(boxes: np.ndarray, h: int, w: int) -> dict:
         ]
     )
     return {
-        "class_labels": torch.zeros(len(b), dtype=torch.long),
+        "class_labels": torch.full((len(b),), label, dtype=torch.long),
         "boxes": torch.from_numpy(cxcywh.astype(np.float32)).reshape(-1, 4),
     }
+
+
+def sonar_augment(
+    crop: np.ndarray, boxes: np.ndarray, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """Physically motivated side-scan augmentation (each part with its own probability).
+
+    - multiplicative speckle (gamma, 3-10 looks): different sonars and settings;
+    - along-track blur (rows, sigma 0.5-1.5 px): beam width / ping-rate differences;
+    - along-track stretch (rows x 0.8-1.25, size kept): vessel speed / ping-rate differences,
+      the pixel-aspect shift measured on the Contact recording. Objects that would be cut to
+      less than half their area leave the tile unchanged.
+    """
+    from scipy.ndimage import gaussian_filter1d, zoom
+
+    out = crop.astype(np.float32)
+    if rng.random() < 0.5:
+        looks = rng.uniform(3, 10)
+        out = out * rng.gamma(looks, 1 / looks, size=out.shape).astype(np.float32)
+    if rng.random() < 0.3:
+        out = gaussian_filter1d(out, sigma=rng.uniform(0.5, 1.5), axis=0)
+    if rng.random() < 0.3:
+        h, w = out.shape
+        f = float(np.exp(rng.uniform(np.log(0.8), np.log(1.25))))
+        z = zoom(out, (f, 1.0), order=1)
+        zb = boxes.astype(np.float64) * [1, f, 1, f]
+        zh = z.shape[0]
+        if f < 1:
+            pad = np.full((h, w), float(np.median(out)), dtype=np.float32)
+            oy = int(rng.integers(0, h - zh + 1))
+            pad[oy : oy + zh] = z
+            return pad, zb + [0, oy, 0, oy]
+        oy = int(rng.integers(0, zh - h + 1))
+        moved = zb - [0, oy, 0, oy]
+        clipped = np.clip(moved, 0, [w, h, w, h])
+        area = np.prod(np.maximum(moved[:, 2:] - moved[:, :2], 0), axis=1)
+        kept = np.prod(np.maximum(clipped[:, 2:] - clipped[:, :2], 0), axis=1)
+        vis = np.divide(kept, area, out=np.zeros_like(kept), where=area > 0)
+        if np.any((vis > 0) & (vis < 0.5)):
+            return out, boxes
+        return z[oy : oy + h], clipped[vis >= 0.5]
+    return out, boxes
 
 
 def rescale(
@@ -157,8 +199,12 @@ class TileDataset(Dataset):
         seed: int = 0,
         cache: ImageCache | None = None,
         scale_range: tuple[float, float] | None = None,
+        label_of: dict[str, int] | None = None,
+        sonar_aug: bool = False,
     ) -> None:
         self.samples, self.tiles = samples, tiles
+        self.label_of = label_of  # dataset_id -> class index (class per dataset)
+        self.sonar_aug = sonar_aug
         self.augment, self.seed = augment, seed
         self.scale_range = scale_range  # e.g. (0.5, 1.5): random zoom, half of the items
         self.cache = cache or ImageCache()
@@ -185,9 +231,14 @@ class TileDataset(Dataset):
                 crop, boxes = rescale(
                     crop, boxes, float(np.exp(rng.uniform(np.log(lo), np.log(hi)))), rng
                 )
+            if self.sonar_aug:
+                crop, boxes = sonar_augment(crop, boxes, rng)
             crop = crop * rng.uniform(0.8, 1.2) + rng.uniform(-15, 15)  # gain change
         crop = np.clip(crop, 0, 255).astype(np.uint8)
-        return to_pixels([crop])[0], _targets(boxes, h, w)
+        label = 0
+        if self.label_of is not None:
+            label = self.label_of[self.samples[t.sample_index].dataset_id]
+        return to_pixels([crop])[0], _targets(boxes, h, w, label)
 
 
 def collate(batch):

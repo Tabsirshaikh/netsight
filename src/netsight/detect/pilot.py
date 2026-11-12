@@ -258,6 +258,14 @@ def main(argv: list[str] | None = None) -> int:
         metavar=("LO", "HI"),
         help="random zoom range for training tiles, e.g. 0.5 1.5",
     )
+    ap.add_argument(
+        "--class-per-dataset",
+        action="store_true",
+        help="one class per training dataset (box conventions differ); evaluation class-agnostic",
+    )
+    ap.add_argument(
+        "--sonar-aug", action="store_true", help="speckle, along-track blur and stretch"
+    )
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--model-id", default=None, help="name recorded in the model label")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
@@ -289,8 +297,17 @@ def main(argv: list[str] | None = None) -> int:
         model = DFineForObjectDetection.from_pretrained(args.init_from)
         processor = AutoImageProcessor.from_pretrained(args.init_from)
     else:
-        model, processor = load_model(args.checkpoint)
+        n_labels = 1
+        if args.class_per_dataset:
+            n_labels = len({smp.dataset_id for smp in splits["train"]})
+        model, processor = load_model(args.checkpoint, num_labels=n_labels)
     model.to(device)
+    label_of = None
+    if args.class_per_dataset:
+        ids = sorted({smp.dataset_id for smp in splits["train"]})
+        label_of = {d: i for i, d in enumerate(ids)}
+        model.config.id2label = {i: d for d, i in label_of.items()}
+        model.config.label2id = dict(label_of)
     pixel_dir = data_dir() / "cache" / "pixels"
     use_pixels = (pixel_dir / "index.json").exists()  # decoded once: no per-tile decoding
     cache = PixelCache(pixel_dir) if use_pixels else ImageCache(max_images=2048)
@@ -332,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
             seed=args.seed + epoch,
             scale_range=tuple(args.scale_aug) if args.scale_aug else None,
             cache=PixelCache(pixel_dir) if use_pixels else ImageCache(256),
+            label_of=label_of,
+            sonar_aug=args.sonar_aug,
         )
         loader = DataLoader(
             ds,
