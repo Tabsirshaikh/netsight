@@ -18,6 +18,7 @@ import os
 import re
 import time
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 
@@ -167,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", required=True)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--reverse", action="store_true", help="extra worker: start from the end")
+    p.add_argument("--indices", default=None, help="JSON list of image indices to review")
     p.add_argument("--worker", default="", help="suffix of this worker's review file")
     a = p.parse_args(argv)
     root = data_dir()
@@ -195,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         int(i) for i in rng.choice(with_labels, min(a.images, len(with_labels)), replace=False)
     )
     results = []
+    if a.indices:
+        pick = sorted(int(i) for i in json.loads(Path(a.indices).read_text("utf-8")))
     if a.reverse:
         pick = pick[::-1]
     for i in pick:

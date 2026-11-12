@@ -18,3 +18,6 @@ Quota page: http://localhost:20128/dashboard/quota (check with playwright-core +
 5. Multi-class model incl. ApertureLab synthetic classes (only after a proxy test).
 
 ## Log
+- 04:30 Phase 1a running: Gemini 3.8 Flash low, 7 workers (mine test 2, GhostVision test 2, Contact 2, mine train 2 incl. reverse). 1,773 images; ~4.5/min at 5 workers. Phase 3a square-pixel resampler committed. ApertureLab reader + licence committed; images downloading.
+- 04:37 Phase 5 test training started: proxy + ApertureLab synthetic (class-agnostic), compare with proxy_base.
+- 04:52 Phase 5 classifier (resnet18 crops, 13 classes): same-source 51-100% correct but cross-dataset wreck 41%, person 11%, rock (synthetic->real boulders) 1%, pipe (synthetic->real SubPipe) 0%. Classifier learns the sonar, not the object; synthetic classes do not transfer. Net/rope/tyre classes from synthetic data NOT built. runs/classifier_v0/results.json. Phase 1: mine test review done (168; 23 with unsure) -> sol re-check of 33 running.
