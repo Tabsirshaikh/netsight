@@ -275,3 +275,20 @@ datasets:
     format: "aggregated side-scan sets; gated (manual approval on Hugging Face)"
     labels: "bounding boxes (card); UNVERIFIED"
     notes: "Multi-source: likely re-packages other authors' datasets, so the card's Apache label may not be the uploader's to grant. Research only until each source is traced."
+
+  - id: aperturelab_sss
+    title: "ApertureLab Synthetic Side-Scan Sonar Dataset v1.0 (EdgeTech 4125i)"
+    source_url: https://huggingface.co/datasets/idg101/Aperture_Lab_Synthetic_Side_Scan_Sonar_v1
+    licence: "ALSD-1.0 (ApertureLab Synthetic Sonar Dataset License, side-scan edition)"
+    licence_status: verified
+    commercial_use: conditional
+    tier: conditional
+    availability: available
+    files:
+      - name: coco_all.json
+        url: https://huggingface.co/datasets/idg101/Aperture_Lab_Synthetic_Side_Scan_Sonar_v1/resolve/main/coco_all.json
+      - name: images/sss_XXXX_drc.png (250 files)
+        url: https://huggingface.co/datasets/idg101/Aperture_Lab_Synthetic_Side_Scan_Sonar_v1/tree/main/images
+    format: "250 simulated starboard swaths, 4628x2667 PNG, square 2.3 cm pixels, COCO polygons/boxes"
+    labels: "ghost_net 194, rope_line 144, container 103, wreck 91, tire 392, pipe 118, natural 512"
+    notes: "Commercial use allowed with attribution ('ApertureLab Synthetic Side-Scan Sonar Dataset, Isaac Gerg' + link) and a copy of the licence; no rights for Excluded Parties (Kitware; NSWC PCD; PMS 408; PMS 495) and models must not be delivered to them. Simulated: no electronic noise."

@@ -68,6 +68,7 @@ DATASET_IDS = {
     "subpipe": "subpipe_mini2",
     "sctd": "sctd",
     "ai4shipwrecks": "ai4shipwrecks",
+    "aperturelab": "aperturelab_sss",
 }
 
 
@@ -132,8 +133,21 @@ def build_splits(root: Path) -> dict:
     sw_test = [s for s in sw if s.member.startswith("test/")]  # official split: 13 other sites
     sw_val = [s for s in sw if s.member.startswith("train/") and s.group in AI4S_VAL_SITES]
     sw_train = [s for s in sw if s.member.startswith("train/") and s.group not in AI4S_VAL_SITES]
+    al_zip = raw / "aperturelab_sss" / "aperturelab_grey.zip"
+    al: list = []
+    if al_zip.exists():
+        from netsight.datasets.aperturelab import read_aperturelab_zip
+
+        al = read_aperturelab_zip(al_zip)
+    al_by = {k: [s for s in al if s.source_split == k] for k in ("train", "val", "test")}
     return {
-        "train": m["train"] + g["train"] + a["train"] + p["train"] + sc_train + sw_train,
+        "train": m["train"]
+        + g["train"]
+        + a["train"]
+        + p["train"]
+        + sc_train
+        + sw_train
+        + al_by["train"],
         "val": {
             "mine": m["val"],
             "ghostvision": g["val"],
@@ -141,6 +155,7 @@ def build_splits(root: Path) -> dict:
             "subpipe": p["val"],
             "sctd": sc_val,
             "ai4shipwrecks": sw_val,
+            **({"aperturelab": al_by["val"]} if al else {}),
         },
         "test": {
             "mine": m["test"],
@@ -150,6 +165,7 @@ def build_splits(root: Path) -> dict:
             "subpipe": p["test"],
             "sctd": sc_test,
             "ai4shipwrecks": sw_test,
+            **({"aperturelab": al_by["test"]} if al else {}),
         },
         "dropped_unreadable": dropped,
     }
