@@ -23,6 +23,8 @@ def split_manifest(splits: dict) -> dict:
     hash of the sorted image list so changes are detectable."""
     out: dict = {}
     for split, sets in splits.items():
+        if not isinstance(sets, dict):  # e.g. the list of dropped unreadable images
+            continue
         for name, samples in sets.items():
             members = sorted(f"{s.dataset_id}:{s.member}" for s in samples)
             groups = Counter(str(s.group) for s in samples)

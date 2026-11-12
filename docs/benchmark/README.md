@@ -23,7 +23,8 @@ and object counts, and a SHA-256 of the sorted image list. Test groups:
 | ghostvision_crabpot | see licence register | Rec8, Rec9, Rec14 | validation Rec2, Rec13 |
 | ghostvision Contact | see licence register | Contact recording | other sensor geometry (shift test) |
 | aquascan_1k | see licence register | 2 survey days | |
-| subpipe_mini2 | see licence register | 2 time windows | label convention marks seabed beside the pipe |
+| subpipe_mini2 | see licence register | 3 time windows | label convention marks seabed beside the pipe |
+| ai4shipwrecks | see licence register | 13 wreck sites (official split) | not in model v0.4 training (v0.5 rejected) |
 | sctd | research only | official test | not usable for a product model |
 
 Licences: `licences/` in the repository. Research-only data never enters a product model.
