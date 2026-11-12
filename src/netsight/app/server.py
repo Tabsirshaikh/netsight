@@ -384,6 +384,7 @@ def measure_completeness(
     threshold: float,
     tta: bool,
     profile: str = "general",
+    claim_level: str = "calibrated",
 ) -> dict[str, Any]:
     """Inject reference targets into the survey's own images and measure Pd per image block."""
     from netsight.trust.bounds import one_sided_lower
@@ -422,8 +423,21 @@ def measure_completeness(
     ok = [c for c in cells if c.status == "ok"]
     n = sum(c.n_trials for c in cells)
     k = sum(c.n_detected for c in cells)
+    caveat = (
+        "Pd applies to objects like those in the chosen profile's surveys, at their own "
+        "pixel size; cells with fewer than 5 trials are marked insufficient, not "
+        "estimated. On held-out surveys transplant Pd agreed with real recall on 4 of 6 "
+        "datasets and was pessimistic on SubPipe and SCTD."
+    )
+    if claim_level != "calibrated":
+        caveat = (
+            f"INDICATIVE ONLY: this survey's geometry differs from the training data (claim "
+            f"level {claim_level}), so the injected objects may not resemble this survey's "
+            "objects and this Pd can be far too high. " + caveat
+        )
     return {
         "available": True,
+        "claim_level": claim_level,
         "method": (
             "real labelled objects from validation surveys (profile: "
             f"{profile}) transplanted onto the seabed of this survey, detected at this "
@@ -438,12 +452,7 @@ def measure_completeness(
         "pd_lower90": one_sided_lower(k, n, alpha=0.10) if n else None,
         "cells_ok": len(ok),
         "cells": [c.to_dict() for c in cells],
-        "caveat": (
-            "Pd applies to objects like those in the chosen profile's surveys, at their own "
-            "pixel size; cells with fewer than 5 trials are marked insufficient, not "
-            "estimated. On held-out surveys transplant Pd agreed with real recall on 4 of 6 "
-            "datasets and was pessimistic on SubPipe and SCTD."
-        ),
+        "caveat": caveat,
     }
 
 
@@ -597,7 +606,9 @@ def analyze_sync(
         "inputs": {name: hashlib.sha256(data).hexdigest() for name, _, data in images},
     }
     completeness_result = (
-        measure_completeness(runtime, bundle, images, predictions, threshold, tta, profile)
+        measure_completeness(
+            runtime, bundle, images, predictions, threshold, tta, profile, claim.level
+        )
         if completeness
         else None
     )
