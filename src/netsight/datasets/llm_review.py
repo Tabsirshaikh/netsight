@@ -118,11 +118,12 @@ def ask(over, mosaic, w: int, h: int, target: str) -> dict:
                     "Authorization": "Bearer " + os.environ["OMNIROUTE_API_KEY"],
                 },
             )
-            txt = json.load(urllib.request.urlopen(req, timeout=900))["choices"][0]["message"][
-                "content"
-            ]
+            resp = json.load(urllib.request.urlopen(req, timeout=900))
+            txt = resp["choices"][0]["message"]["content"]
             m = re.search(r"\{.*\}", txt, re.S)
-            return json.loads(m.group(0)) if m else {"error": txt[:500]}
+            out = json.loads(m.group(0)) if m else {"error": txt[:500]}
+            out["_usage"] = resp.get("usage")
+            return out
         except Exception as exc:  # noqa: BLE001 - retry any transport/parse failure
             err = str(exc)
             time.sleep(10 * (attempt + 1))
@@ -157,25 +158,53 @@ def main(argv: list[str] | None = None) -> int:
     from netsight.detect.pixel_cache import PixelCache
 
     p = argparse.ArgumentParser()
-    p.add_argument("--set", required=True)
+    p.add_argument("--set", default=None, help="test set name")
+    p.add_argument(
+        "--train-dataset", default=None, help="dataset_id: review its training images instead"
+    )
     p.add_argument("--images", type=int, default=10)
     p.add_argument("--dump", default="runs/calib_v0.4")
     p.add_argument("--out", required=True)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--reverse", action="store_true", help="extra worker: start from the end")
+    p.add_argument("--worker", default="", help="suffix of this worker's review file")
     a = p.parse_args(argv)
     root = data_dir()
-    samples = build_splits(root)["test"][a.set]
+    splits = build_splits(root)
     px = PixelCache(root / "cache" / "pixels")
-    preds, gts = _load_set(root / a.dump / f"test_{a.set}.npz")
+    if a.train_dataset:
+        samples = [x for x in splits["train"] if x.dataset_id == a.train_dataset]
+        preds, gts = _load_set(root / a.dump / f"train_{a.train_dataset}.npz")
+        a.set = {"mine_detection_sss": "mine", "ghostvision_crabpot": "ghostvision"}.get(
+            a.train_dataset, a.train_dataset
+        )
+    else:
+        samples = splits["test"][a.set]
+        preds, gts = _load_set(root / a.dump / f"test_{a.set}.npz")
     out = root / a.out
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(a.seed)
     with_labels = [i for i, g in enumerate(gts) if len(np.asarray(g).reshape(-1, 4))]
+    if a.images <= 0:  # every image with at least one candidate (labels or confident proposals)
+        with_labels = [i for i in range(len(gts)) if len(candidates(*preds[i], gts[i])[0])]
+        a.images = len(with_labels)
+    done = set()
+    if (out / "review.jsonl").exists():  # resume: skip images already reviewed
+        done = {json.loads(x)["index"] for x in (out / "review.jsonl").open(encoding="utf-8")}
     pick = sorted(
         int(i) for i in rng.choice(with_labels, min(a.images, len(with_labels)), replace=False)
     )
     results = []
+    if a.reverse:
+        pick = pick[::-1]
     for i in pick:
+        done |= {
+            json.loads(x)["index"]
+            for f in out.glob("review*.jsonl")
+            for x in f.open(encoding="utf-8")
+        }
+        if i in done:
+            continue
         img = np.asarray(px.get(samples[i]), np.uint8)
         cand, source = candidates(*preds[i], gts[i])
         over, mosaic = render(img, cand)
@@ -191,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             "answer": ans,
         }
         results.append(rec)
-        with (out / "review.jsonl").open("a", encoding="utf-8") as f:
+        with (out / f"review{a.worker}.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
         print(i, len(cand), "candidates", "error" if "error" in ans else "ok", flush=True)
     return 0
