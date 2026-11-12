@@ -168,7 +168,7 @@ def test_completeness_map_grid_and_bounds():
         [_bright_spot_detector(img)],
         _bright_spot_detector,
         0.5,
-        target_px=8,
+        library=[parametric_target("block", 8, highlight=3.0)],
         rng=rng,
         passes=3,
         per_pass=4,

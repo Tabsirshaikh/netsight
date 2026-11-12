@@ -408,7 +408,7 @@ def completeness_map(
     predict: Predictor,
     threshold: float,
     *,
-    target_px: int,
+    library: Sequence[TargetTemplate],
     rng: np.random.Generator,
     passes: int = 4,
     per_pass: int = 6,
@@ -416,35 +416,28 @@ def completeness_map(
     alpha: float = 0.10,
     min_trials: int = 5,
 ) -> list[CompletenessCell]:
-    """Per-image grid of Pd (with one-sided lower bounds) for parametric reference targets.
+    """Per-image grid of Pd (with one-sided lower bounds) for targets drawn from ``library``.
 
-    Each pass pastes ``per_pass`` targets (block with shadow or flat patch, alternating) at free
-    places and re-runs the detector once. A target counts as detected when an overlapping
-    detection scores at or above the survey's operating ``threshold``. With few trials per cell
-    the bounds are wide; cells under ``min_trials`` are marked insufficient, never filled in.
+    Use real objects transplanted from labelled surveys the detector did not train on: simple
+    parametric shapes are not detected by a detector trained on real objects (WP6 finding), so
+    they would report Pd 0 everywhere. Each pass pastes ``per_pass`` random library targets at
+    free seabed places and re-runs the detector once. A target counts as detected when an
+    overlapping detection scores at or above the survey's operating ``threshold``. Cells under
+    ``min_trials`` are marked insufficient, never filled in.
     """
     from netsight.trust.bounds import one_sided_lower
 
+    if not library:
+        raise ValueError("library must contain at least one target")
     rows, cols = grid
     out: list[CompletenessCell] = []
     for i, image in enumerate(images):
         h, w = image.shape[:2]
         counts = np.zeros((rows, cols, 2), int)
-        for p in range(passes):
+        for _p in range(passes):
 
-            def templates(_k: int, r: np.random.Generator, p: int = p) -> list[TargetTemplate]:
-                out_t = []
-                for j in range(per_pass):
-                    if (j + p) % 2 == 0:
-                        side = "right" if r.random() < 0.5 else "left"
-                        out_t.append(
-                            parametric_target(
-                                "block", target_px, shadow_px=target_px, shadow_side=side
-                            )
-                        )
-                    else:
-                        out_t.append(parametric_target("flat_patch", target_px))
-                return out_t
+            def templates(_k: int, r: np.random.Generator) -> list[TargetTemplate]:
+                return [library[int(j)] for j in r.integers(len(library), size=per_pass)]
 
             trials = run_trials(
                 [image],
