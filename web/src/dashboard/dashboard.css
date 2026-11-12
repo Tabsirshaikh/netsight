@@ -7,6 +7,9 @@
   --ns-muted: #8fa7b1;
   --ns-green: #6de2c3;
   --ns-amber: #f4ab71;
+  --ns-completeness-low: #ef7865;
+  --ns-completeness-high: #47d9bf;
+  --ns-completeness-hatch: #e4eeec;
   color: var(--ns-text);
   background: var(--ns-bg);
   min-height: 100vh;
@@ -250,6 +253,40 @@
 .ns-palette-results small { display: block; color: #96b2bd; margin-top: 6px; font-size: 10px; }
 .ns-palette-results > p { padding: 20px; color: #a0b7c0; font-size: 12px; }
 .ns-palette footer { display: flex; gap: 18px; padding: 12px 20px; border-top: 1px solid #28404d; font: 9px "IBM Plex Mono", monospace; color: #8faab7; }
+
+.ns-controls .ns-completeness-control { flex: 1 1 240px; max-width: 340px; }
+.ns-completeness-control input { flex-shrink: 0; }
+.ns-completeness-control small { font-size: 9px; }
+.ns-verbatim { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ns-completeness > p { margin-bottom: 12px; }
+.ns-completeness-images { display: grid; gap: 14px; margin-top: 12px; }
+.ns-dashboard .ns-grid-image { width: 100%; text-align: left; overflow-wrap: anywhere; margin-bottom: 8px; font-size: 10px; }
+.ns-completeness-grid { display: grid; gap: 4px; padding: 4px; }
+.ns-dashboard .ns-completeness-grid button { aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 3px; border-color: #b3c9c955; }
+.ns-dashboard .ns-completeness-grid button:hover { border-color: white; }
+.ns-insufficient, .ns-completeness-legend em { background-image: repeating-linear-gradient(135deg, transparent 0 5px, #e4eeecaa 5px 6px) !important; }
+.ns-dashboard button[aria-pressed="true"] { border-color: var(--ns-green); }
+.ns-viewer-tools button[aria-pressed="true"] { background: #19463f; color: var(--ns-green); }
+.ns-completeness-legend { margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+.ns-completeness-legend b { display: inline-block; width: 45px; height: 8px; background: linear-gradient(90deg, var(--ns-completeness-low), var(--ns-completeness-high)); }
+.ns-completeness-legend em { display: inline-block; width: 12px; height: 10px; border: 1px solid var(--ns-muted); }
+.ns-contact-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.ns-contact-map { height: 330px; width: 100%; background: var(--ns-raised); border: 1px solid var(--ns-border); border-radius: 6px; isolation: isolate; z-index: 0; }
+.ns-dashboard .leaflet-control-attribution { background: #07131cee; color: var(--ns-text); font-size: 9px; }
+.ns-dashboard .leaflet-control-attribution a { color: var(--ns-green); }
+.ns-dashboard .leaflet-bar a { background: var(--ns-panel); color: var(--ns-text); }
+.ns-dashboard .leaflet-tooltip { background: var(--ns-panel); color: var(--ns-text); border-color: var(--ns-border); }
+.ns-map-panel > p { margin-top: 9px; }
+.ns-plan > p, .ns-plan > div[role="alert"] { margin-bottom: 12px; }
+.ns-plan-table { overflow-x: auto; }
+.ns-plan table { border-collapse: collapse; width: 100%; font-size: 10px; }
+.ns-plan caption { color: var(--ns-muted); text-align: left; padding: 8px 0; }
+.ns-plan th, .ns-plan td { padding: 7px 3px; border-bottom: 1px solid var(--ns-border); text-align: right; }
+.ns-plan th { font-weight: 400; color: var(--ns-muted); }
+.ns-plan th:first-child, .ns-plan td:first-child { text-align: left; }
+.ns-plan td button { font-size: 10px; padding: 4px; overflow-wrap: anywhere; }
+.ns-completeness .ns-summary-list dd { overflow-wrap: anywhere; max-width: 60%; }
+
 @keyframes ns-sweep { to { transform: rotate(360deg); } }
 @keyframes ns-ring { from { transform: scale(.1); opacity: .8; } to { transform: scale(1); opacity: 0; } }
 @keyframes ns-shimmer { to { background-position: -200% 0; } }
@@ -269,16 +306,18 @@
   .ns-empty-steps { gap: 10px; flex-wrap: wrap; justify-content: center; }
   .ns-controls { gap: 12px; }
   .ns-controls > label { flex-basis: 120px; }
+  .ns-viewer-tools { top: 48px; }
 }
 @media (max-width: 960px) {
   .ns-layout { grid-template-columns: 210px minmax(0, 1fr); }
-  .ns-inspector { grid-column: 2; border-left: 0; border-top: 1px solid var(--ns-border); display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .ns-inspector { grid-column: 2; border-left: 0; border-top: 1px solid var(--ns-border); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
   .ns-inspector > .ns-panel-heading { grid-column: 1 / -1; margin-bottom: 0; }
   .ns-inspector section + section { margin-top: 0; }
-  .ns-inspector > section { padding-top: 18px; border-top: 1px solid #20333e; }
+  .ns-inspector > section { padding-top: 18px; border-top: 1px solid #20333e; min-width: 0; }
   .ns-inspector-empty { grid-column: 1 / -1; }
   .ns-rail { grid-row: 1 / 3; }
   .ns-stage, .ns-viewer { min-height: 520px; }
+  .ns-contacts, .ns-completeness { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .ns-header { padding: 12px 16px; gap: 10px; min-height: 62px; }
@@ -318,10 +357,18 @@
   .ns-error { padding: 16px; }
   .ns-error code { font-size: 10px; }
   .ns-modal-backdrop { padding-top: 8vh; }
+  .ns-completeness-legend { max-width: 200px; flex-wrap: wrap; line-height: 1.5; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ns-dashboard *, .ns-dashboard *::before, .ns-dashboard *::after {
     animation: none !important; transition: none !important; scroll-behavior: auto !important;
   }
   .ns-sonar b { background: conic-gradient(transparent 220deg, #6de2c344 360deg); }
+}
+
+/* Desktop: the three columns share the window height and scroll independently, so a long
+   sample list cannot stretch the viewer and push the image below the fold. */
+@media (min-width: 1191px) {
+  .ns-layout { height: calc(100vh - 72px); min-height: 0; }
+  .ns-layout > * { min-height: 0; overflow: auto; }
 }

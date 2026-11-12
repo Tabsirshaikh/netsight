@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { gsap, useGSAP } from '../lib/gsap';
-import type { Contact, SurveyImage } from './types';
-import { percent } from './types';
+import type { Completeness, CompletenessCell, Contact, SurveyImage } from './types';
+import { cellDescription, percent } from './types';
 
 interface Props {
   image: SurveyImage;
@@ -10,9 +10,10 @@ interface Props {
   selected: string | null;
   onSelect: (id: string) => void;
   zoomRequest: number;
+  completeness: Completeness | null;
 }
 
-export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: Props) {
+export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, completeness }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
@@ -22,6 +23,8 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
   const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
   const [bitmap, setBitmap] = useState<HTMLImageElement | null>(null);
   const [hover, setHover] = useState<{ contact: Contact; x: number; y: number } | null>(null);
+  const [cellHover, setCellHover] = useState<{ cell: CompletenessCell; x: number; y: number } | null>(null);
+  const [showCompleteness, setShowCompleteness] = useState(false);
   const [scaleLabel, setScaleLabel] = useState('100%');
   const [loadError, setLoadError] = useState(false);
   const tall = image.height > image.width * 2.5;
@@ -41,7 +44,6 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
     context.clearRect(0, 0, width, height);
     context.fillStyle = '#02090e';
     context.fillRect(0, 0, width, height);
-    // The subdued grid remains legible outside the sonar footprint.
     context.strokeStyle = '#10212a';
     context.lineWidth = 1;
     context.beginPath();
@@ -55,6 +57,64 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
     context.scale(scale, scale);
     context.drawImage(bitmap, 0, 0, image.width, image.height);
     context.restore();
+
+    // Cell geometry uses exactly the image-to-screen transform used by boxes.
+    if (showCompleteness && completeness?.available) {
+      const styles = getComputedStyle(element);
+      const low = styles.getPropertyValue('--ns-completeness-low').trim();
+      const high = styles.getPropertyValue('--ns-completeness-high').trim();
+      const hatch = styles.getPropertyValue('--ns-completeness-hatch').trim();
+      completeness.cells.filter(cell => cell.image_index === image.index).forEach(cell => {
+        const [x0, y0, x1, y1] = cell.box;
+        const bx = x + x0 * scale;
+        const by = y + y0 * scale;
+        const bw = (x1 - x0) * scale;
+        const bh = (y1 - y0) * scale;
+        context.save();
+        context.beginPath();
+        context.rect(bx, by, bw, bh);
+        context.clip();
+        // Two alpha-composited endpoints keep the scale driven by CSS variables.
+        // Cells with too few trials have no estimate: hatch only, never a Pd colour.
+        if (cell.status !== 'insufficient_trials') {
+          const t = Math.max(0, Math.min(1, cell.pd_lower));
+          context.globalAlpha = 0.36;
+          context.fillStyle = low;
+          context.fillRect(bx, by, bw, bh);
+          context.globalAlpha = t * 0.75;
+          context.fillStyle = high;
+          context.fillRect(bx, by, bw, bh);
+        }
+        context.globalAlpha = 0.65;
+        context.strokeStyle = hatch;
+        context.lineWidth = 1;
+        if (cell.status === 'insufficient_trials') {
+          context.beginPath();
+          const left = Math.max(0, bx);
+          const top = Math.max(0, by);
+          const right = Math.min(width, bx + bw);
+          const bottom = Math.min(height, by + bh);
+          for (let start = left - (bottom - top); start < right; start += 9) {
+            context.moveTo(start, bottom);
+            context.lineTo(start + (bottom - top), top);
+          }
+          context.stroke();
+          context.globalAlpha = 1;
+          context.font = '10px "IBM Plex Mono", monospace';
+          context.fillStyle = '#04131e';
+          context.fillRect(bx + 3, by + 3, 94, 17);
+          context.fillStyle = hatch;
+          context.fillText('too few trials', bx + 6, by + 15);
+        }
+        context.restore();
+        context.save();
+        context.strokeStyle = hatch;
+        context.globalAlpha = 0.3;
+        context.lineWidth = 1;
+        context.strokeRect(bx, by, bw, bh);
+        context.restore();
+      });
+    }
 
     image.detections.forEach((contact, index) => {
       const reveal = Math.max(0, Math.min(1, sweep.current.progress * 1.3 - index / Math.max(1, image.detections.length) * 0.3));
@@ -106,7 +166,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
       }
     }
     setScaleLabel(`${Math.round(scale * 100)}%`);
-  }, [bitmap, image, flags, selected, tall]);
+  }, [bitmap, image, flags, selected, tall, showCompleteness, completeness]);
 
   const fit = useCallback(() => {
     const { width, height } = size.current;
@@ -122,6 +182,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
   useEffect(() => {
     setBitmap(null);
     setHover(null);
+    setCellHover(null);
     setLoadError(false);
     const img = new Image();
     let alive = true;
@@ -131,7 +192,6 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
     return () => { alive = false; img.onload = null; img.onerror = null; };
   }, [url]);
 
-  // Resize does not reset the user's pan; loading a new image does.
   useEffect(() => {
     if (!root.current) return;
     const observer = new ResizeObserver(entries => {
@@ -162,6 +222,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
     const scale = Math.max(0.002, Math.min(32, old.scale * factor));
     const ratio = scale / old.scale;
     transform.current = { scale, x: x - (x - old.x) * ratio, y: y - (y - old.y) * ratio };
+    setCellHover(null);
     draw();
   }, [draw]);
 
@@ -200,13 +261,19 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
       px >= d.box[0] && px <= d.box[2] && py >= d.box[1] && py <= d.box[3]);
   }
 
+  function hitCell(x: number, y: number) {
+    if (!showCompleteness || !completeness?.available) return;
+    const t = transform.current;
+    const px = (x - t.x) / t.scale;
+    const py = (y - t.y) / t.scale;
+    return completeness.cells.find(c => c.image_index === image.index &&
+      px >= c.box[0] && px < c.box[2] && py >= c.box[1] && py < c.box[3]);
+  }
+
   return (
     <div className="ns-viewer" ref={root}>
-      <canvas
-        ref={canvas}
-        className="ns-main-canvas"
-        tabIndex={0}
-        aria-label={`Sonar viewer: ${image.name}. Drag to pan, scroll to zoom. Select contacts in the inspector for keyboard access. Press zero to fit.`}
+      <canvas ref={canvas} className="ns-main-canvas" tabIndex={0}
+        aria-label={`Sonar viewer: ${image.name}. Drag to pan, scroll to zoom. Select contacts in the inspector for keyboard access. Completeness cell measurements are available in the Search completeness grids. Press zero to fit.`}
         onKeyDown={event => {
           if (event.key === '0') { event.preventDefault(); fit(); }
           if (event.key === '+' || event.key === '=') zoomAt(1.3, size.current.width / 2, size.current.height / 2);
@@ -229,10 +296,13 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
             d.x = event.clientX;
             d.y = event.clientY;
             setHover(null);
+            setCellHover(null);
             draw();
           } else {
             const contact = hit(x, y);
+            const cell = hitCell(x, y);
             setHover(contact ? { contact, x, y } : null);
+            setCellHover(cell ? { cell, x, y } : null);
           }
         }}
         onPointerUp={event => {
@@ -245,24 +315,31 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
         onPointerCancel={() => { drag.current = null; }}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={() => { setHover(null); setCellHover(null); }}
       />
       <div className="ns-viewer-label"><span className="ns-live-dot" /> SONAR / {image.width} × {image.height} PX</div>
       <div className="ns-viewer-tools">
+        {completeness?.available && <button aria-pressed={showCompleteness} onClick={() => { setShowCompleteness(v => !v); setCellHover(null); }}>Completeness</button>}
         <button onClick={fit} title="Fit image (0)">Fit <kbd>0</kbd></button>
         <button onClick={() => zoomAt(1 / 1.4, size.current.width / 2, size.current.height / 2)} aria-label="Zoom out">−</button>
         <span>{scaleLabel}</span>
         <button onClick={() => zoomAt(1.4, size.current.width / 2, size.current.height / 2)} aria-label="Zoom in">+</button>
       </div>
-      <div className="ns-viewer-legend"><i /> Flagged <i className="unflagged" /> Below threshold</div>
-      {hover && (
+      <div className="ns-viewer-legend">
+        <i /> Flagged <i className="unflagged" /> Below threshold
+        {showCompleteness && completeness?.available && <div className="ns-completeness-legend">Pd lower90: 0 <b /> 1 · <em /> too few trials</div>}
+      </div>
+      {(hover || (cellHover && showCompleteness)) && (
         <div className="ns-tooltip" style={{
-          left: Math.max(8, Math.min(hover.x + 14, size.current.width - 220)),
-          top: Math.max(8, Math.min(hover.y + 14, size.current.height - 90)),
+          left: Math.max(8, Math.min((hover?.x ?? cellHover?.x ?? 0) + 14, size.current.width - 220)),
+          top: Math.max(8, Math.min((hover?.y ?? cellHover?.y ?? 0) + 14, size.current.height - 130)),
         }}>
-          <strong>{hover.contact.id} · {percent(hover.contact.probability)}</strong>
-          <span>Calibrated on validation surveys</span>
-          <span>{flags.has(hover.contact.id) ? 'Flagged for review' : 'Below operating threshold'} · click to inspect</span>
+          {hover && <>
+            <strong>{hover.contact.id} · {percent(hover.contact.probability)}</strong>
+            <span>Calibrated on validation surveys</span>
+            <span>{flags.has(hover.contact.id) ? 'Flagged for review' : 'Below operating threshold'} · click to inspect</span>
+          </>}
+          {cellHover && showCompleteness && <span>{cellDescription(cellHover.cell)}</span>}
         </div>
       )}
       {tall && (
@@ -273,8 +350,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest }: P
             transform.current.y = size.current.height / 2 - py * transform.current.scale;
             draw();
           }}>
-          <canvas ref={mini} width={64} height={180} />
-          <span>OVERVIEW</span>
+          <canvas ref={mini} width={64} height={180} /><span>OVERVIEW</span>
         </button>
       )}
       {loadError && <p className="ns-image-error" role="alert">Preview could not be loaded. Re-run the survey or check the API connection.</p>}

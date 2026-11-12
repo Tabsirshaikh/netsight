@@ -1,5 +1,7 @@
 export type ModelKey = 'general' | 'ghost-gear';
 export type Profile = 'general' | 'ghostvision' | 'aquascan' | 'mine' | 'sctd' | 'subpipe';
+export type ClaimLevel = 'calibrated' | 'indicative' | 'withdrawn';
+export type Ellipse95 = [number, number, number];
 
 export interface Contact {
   id: string;
@@ -19,6 +21,75 @@ export interface SurveyImage {
   detections: Contact[];
 }
 
+export interface Position {
+  lon: number;
+  lat: number;
+  map_x: number;
+  map_y: number;
+  ellipse95: Ellipse95 | null;
+  cov_en_m2: number[][];
+  method: string;
+  assumed_georef_sigma_m: number;
+}
+
+export interface CompletenessCell {
+  image_index: number;
+  row: number;
+  col: number;
+  box: [number, number, number, number];
+  n_trials: number;
+  n_detected: number;
+  pd: number;
+  pd_lower: number;
+  status: 'ok' | 'insufficient_trials';
+}
+
+export interface MeasuredCompleteness {
+  available: true;
+  claim_level: ClaimLevel;
+  method: string;
+  library_size: number;
+  profile: string;
+  grid: [number, number];
+  trials: number;
+  detected: number;
+  pd: number;
+  pd_lower90: number;
+  cells_ok: number;
+  caveat: string;
+  cells: CompletenessCell[];
+}
+
+export type Completeness = MeasuredCompleteness | { available: false; reason: string };
+
+export interface Packs {
+  json: string;
+  html: string;
+  geojson: string;
+  kml: string;
+  csv: string;
+  plan: string;
+  completeness?: string;
+  [key: `completeness_tif_${number}`]: string | undefined;
+}
+
+export interface VerificationPlan {
+  entries: {
+    rank: number;
+    contact_id: string;
+    lon: number;
+    lat: number;
+    p_real: number;
+    ellipse95: Ellipse95 | null;
+    claim_level: ClaimLevel;
+    cumulative_expected_real: number;
+  }[];
+  expected_real_total: number;
+  excluded_withdrawn: number;
+  excluded_no_position: number;
+  note: string;
+}
+
 export interface Analysis {
   survey_id: string;
   model: { id: string; label: string; model_class: string };
@@ -33,9 +104,12 @@ export interface Analysis {
   };
   images: SurveyImage[];
   timing_ms: number;
-  packs: { json: string; html: string };
+  packs: Packs;
   profile: Profile;
   tta: boolean;
+  georeferenced: boolean[];
+  positions: Record<string, Position>;
+  completeness: Completeness | null;
 }
 
 export interface Sample {
@@ -60,6 +134,7 @@ export interface Session {
   model: ModelKey;
   files: File[];
   sampleIds: string[];
+  completeness: boolean;
 }
 
 export const profiles: { value: Profile; label: string }[] = [
@@ -73,6 +148,33 @@ export const profiles: { value: Profile; label: string }[] = [
 
 export const percent = (n: number | null | undefined) =>
   n == null ? '—' : `${(n * 100).toFixed(1)}%`;
+
+export function cellDescription(cell: CompletenessCell): string {
+  return `Pd ≥ ${percent(cell.pd_lower)} (90% lower bound), ${cell.n_detected} of ${cell.n_trials} injected targets found${cell.status === 'insufficient_trials' ? ' · too few trials' : ''}`;
+}
+
+/** Shared colour scale for the canvas, legend and mini-grids. */
+export function completenessColor(value: number): string {
+  const t = Math.max(0, Math.min(1, value));
+  return `color-mix(in srgb, var(--ns-completeness-low) ${(1 - t) * 100}%, var(--ns-completeness-high))`;
+}
+
+export function exportLinks(packs: Packs): { id: string; label: string; url: string }[] {
+  const links = [
+    { id: 'geojson', label: 'GeoJSON', url: packs.geojson },
+    { id: 'kml', label: 'KML', url: packs.kml },
+    { id: 'csv', label: 'CSV', url: packs.csv },
+    { id: 'plan', label: 'Verification plan (JSON)', url: packs.plan },
+    ...(packs.completeness ? [{ id: 'completeness', label: 'Completeness (JSON)', url: packs.completeness }] : []),
+  ];
+  Object.entries(packs)
+    .filter(([key, url]) => /^completeness_tif_\d+$/.test(key) && !!url)
+    .sort(([a], [b]) => Number(a.slice(a.lastIndexOf('_') + 1)) - Number(b.slice(b.lastIndexOf('_') + 1)))
+    .forEach(([id, url]) => {
+      if (url) links.push({ id, label: `Completeness GeoTIFF · image ${Number(id.slice(id.lastIndexOf('_') + 1)) + 1}`, url });
+    });
+  return links.filter(link => !!link.url);
+}
 
 export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   let response: Response;

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { gsap, useGSAP } from '../lib/gsap';
 import { Viewer } from './Viewer';
+import { ContactMap } from './ContactMap';
+import { CompletenessResults, PlanResults } from './ResearchResults';
 import { CommandPalette } from './CommandPalette';
 import type { Command } from './CommandPalette';
-import { api, operatingPreview, percent, profiles } from './types';
+import { api, exportLinks, operatingPreview, percent, profiles } from './types';
 import type { Analysis, Contact, Health, ModelKey, Profile, Sample, Session } from './types';
 import './dashboard.css';
 
@@ -70,6 +72,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile>('general');
   const [budget, setBudget] = useState(1);
   const [tta, setTta] = useState(true);
+  const [completeness, setCompleteness] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -81,6 +84,7 @@ export default function Dashboard() {
   const [descending, setDescending] = useState(true);
   const [zoomRequest, setZoomRequest] = useState(0);
   const [palette, setPalette] = useState(false);
+  const [contactsView, setContactsView] = useState<'contacts' | 'map'>('contacts');
 
   const session = sessions.find(s => s.result.survey_id === activeId);
   const result = session?.result;
@@ -92,9 +96,11 @@ export default function Dashboard() {
     (descending ? -1 : 1) * (a[sort] - b[sort]) || a.id.localeCompare(b.id)), [allContacts, sort, descending]);
   const contact = allContacts.find(c => c.id === selected);
   const localBudget = !!result && budget !== result.operating.budget;
-  const staleControls = !!result && (model !== session?.model || profile !== result.profile || tta !== result.tta);
+  const staleControls = !!result && (model !== session?.model || profile !== result.profile || tta !== result.tta || completeness !== session?.completeness);
   const currentModel = health?.models.find(m => m.key === (session?.model || model));
   const modelClass = result?.model.model_class || currentModel?.model_class || 'research';
+  const hasGeoreference = result?.georeferenced.some(Boolean) ?? false;
+  const downloads = result ? exportLinks(result.packs) : [];
 
   const connect = useCallback(async () => {
     setConnecting(true);
@@ -128,6 +134,11 @@ export default function Dashboard() {
     if (next) { setSelected(id); setImageIndex(next.imageIndex); }
   }
 
+  function chooseImage(index: number) {
+    setImageIndex(index);
+    setSelected(result?.images[index]?.detections[0]?.id || null);
+  }
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -137,7 +148,7 @@ export default function Dashboard() {
       }
       if (palette || busy || event.metaKey || event.ctrlKey || event.altKey) return;
       const element = event.target as HTMLElement;
-      if (element.closest('input, select, textarea, [contenteditable="true"]')) return;
+      if (element.closest('input, select, textarea, [contenteditable="true"], .leaflet-container')) return;
       if (event.key === 'j' || event.key === 'k') {
         event.preventDefault();
         if (!contacts.length) return;
@@ -194,6 +205,7 @@ export default function Dashboard() {
     form.set('profile', profile);
     form.set('budget', String(budget));
     form.set('tta', String(tta));
+    form.set('completeness', String(completeness));
     form.set('show_all', String(showAll));
     const newUrls: string[] = [];
     try {
@@ -209,9 +221,10 @@ export default function Dashboard() {
       }
       if (!alive.current) return;
       setSessions(previous => [{
-        result: analysis, urls: newUrls, model, files: [...files], sampleIds: [...sampleIds],
+        result: analysis, urls: newUrls, model, files: [...files], sampleIds: [...sampleIds], completeness,
       }, ...previous]);
       setActiveId(analysis.survey_id);
+      setContactsView('contacts');
       setImageIndex(0);
       setSelected(analysis.images[0]?.detections[0]?.id || null);
     } catch (err) {
@@ -228,10 +241,12 @@ export default function Dashboard() {
     setModel(item.model);
     setProfile(item.result.profile);
     setTta(item.result.tta);
+    setCompleteness(item.completeness);
     setBudget(item.result.operating.budget);
     setFiles(item.files);
     setSampleIds(item.sampleIds);
     setImageIndex(0);
+    setContactsView('contacts');
     setSelected(item.result.images[0]?.detections[0]?.id || null);
     setError('');
   }
@@ -242,6 +257,7 @@ export default function Dashboard() {
     setSampleIds([]);
     setSelected(null);
     setImageIndex(0);
+    setContactsView('contacts');
     setError('');
     fileInput.current?.focus();
   }
@@ -267,6 +283,10 @@ export default function Dashboard() {
     ...(result ? [
       { id: 'json', title: 'Export · evidence pack JSON', detail: 'Saved run, not local slider preview', run: () => { window.location.href = result.packs.json; } },
       { id: 'html', title: 'Open · HTML report', detail: 'Saved evidence and provenance', run: () => { window.open(result.packs.html, '_blank', 'noopener,noreferrer'); } },
+      ...downloads.map(link => ({
+        id: link.id, title: `Export · ${link.label}`, detail: 'Saved run, not local slider preview',
+        run: () => { window.location.href = link.url; },
+      })),
     ] : []),
   ];
 
@@ -362,6 +382,7 @@ export default function Dashboard() {
             <div className="ns-exports">
               <a href={result?.packs.json} aria-disabled={!result} tabIndex={result ? 0 : -1}>↓ <span>Download evidence pack (JSON)</span></a>
               <a href={result?.packs.html} aria-disabled={!result} tabIndex={result ? 0 : -1} target="_blank" rel="noreferrer">HTML report ↗</a>
+              {downloads.map(link => <a key={link.id} href={link.url} download>↓ {link.label}</a>)}
             </div>
           </div>
 
@@ -380,6 +401,12 @@ export default function Dashboard() {
             </label>
             <label className="ns-tta"><input type="checkbox" checked={tta} onChange={event => setTta(event.target.checked)} disabled={busy} />
               <span>Flip TTA<small>More views</small></span></label>
+            <label className="ns-tta ns-completeness-control">
+              <input type="checkbox" role="switch" checked={completeness} onChange={event => setCompleteness(event.target.checked)} disabled={busy}
+                aria-describedby="ns-completeness-cost ns-completeness-source" />
+              <span>Measure search completeness<small id="ns-completeness-cost">slower: about 3 extra detector passes per image</small>
+                <small id="ns-completeness-source">Injects real labelled objects from validation surveys of the selected applicability profile into your images.</small></span>
+            </label>
             <label className="ns-tta"><input type="checkbox" checked={showAll} onChange={event => setShowAll(event.target.checked)} disabled={busy} />
               <span>Show all candidates<small>Include near-zero boxes</small></span></label>
             <button className="ns-run" disabled={busy || !health || !files.length && !sampleIds.length} onClick={() => void runSurvey()}>
@@ -390,15 +417,15 @@ export default function Dashboard() {
           {(localBudget || staleControls) && result && (
             <div className="ns-preview-note" role="status">
               {localBudget ? `Local budget preview · saved run uses ${result.operating.budget.toFixed(2)} FA/image. ` : ''}
-              {staleControls ? 'Model, profile or TTA changes apply on the next run. ' : ''}
-              Re-run to update evidence, claim, validation recall and downloads.
+              {staleControls ? 'Model, profile, TTA or completeness changes apply on the next run. ' : ''}
+              Re-run to update evidence, claim, validation recall, completeness, map positions and downloads.
             </div>
           )}
 
           <section className="ns-stage" aria-label="Survey imagery">
             {busy ? <Running /> : image && session && preview ? (
               <Viewer image={image} url={session.urls[imageIndex]} flags={preview.flags}
-                selected={selected} onSelect={chooseContact} zoomRequest={zoomRequest} />
+                selected={selected} onSelect={chooseContact} zoomRequest={zoomRequest} completeness={result?.completeness ?? null} />
             ) : (
               <div className="ns-empty">
                 <div className="ns-empty-target" aria-hidden="true"><span /><i /><b>⌁</b></div>
@@ -414,9 +441,8 @@ export default function Dashboard() {
           {result && !busy && session && (
             <div className="ns-thumbnails" aria-label="Survey images">
               {result.images.map(img => (
-                <button key={img.index} onClick={() => {
-                  setImageIndex(img.index); setSelected(img.detections[0]?.id || null);
-                }} className={imageIndex === img.index ? 'active' : ''} aria-pressed={imageIndex === img.index}>
+                <button key={img.index} onClick={() => chooseImage(img.index)}
+                  className={imageIndex === img.index ? 'active' : ''} aria-pressed={imageIndex === img.index}>
                   <img src={session.urls[img.index]} alt="" /><span>{String(img.index + 1).padStart(2, '0')}<small>{img.name}</small></span>
                 </button>
               ))}
@@ -462,6 +488,8 @@ export default function Dashboard() {
                 <p className="ns-micro">Recall: {result.operating.recall_source}. {localBudget && 'Re-run for a recall estimate at the preview budget.'}</p>
                 <p className="ns-micro">Count rule: top floor(budget × images) by raw score; boundary ties are included. The budget is not a measured false-alarm rate for this survey.</p>
               </section>
+              {result.completeness && <CompletenessResults completeness={result.completeness} result={result} imageIndex={imageIndex} onImage={chooseImage} />}
+              <PlanResults url={result.packs.plan} onSelect={chooseContact} />
               <section className="ns-contact-section">
                 <div className="ns-section-title"><h3>Selected contact</h3>
                   {contact && <button onClick={() => setZoomRequest(n => n + 1)}>Zoom ↗</button>}
@@ -487,23 +515,31 @@ export default function Dashboard() {
               </section>
               <section className="ns-contacts">
                 <div className="ns-section-title"><h3>All contacts</h3><span>{contacts.length}</span></div>
-                {!contacts.length ? <p className="ns-muted">No contacts were returned. A clear image is not evidence of absence; try another survey or review the source image.</p> : (
-                  <table>
-                    <caption className="ns-sr-only">Contacts across every image. Select a row; j and k move selection.</caption>
-                    <thead><tr><th scope="col">Contact</th>
-                      <th scope="col" aria-sort={sort === 'probability' ? descending ? 'descending' : 'ascending' : 'none'}><button onClick={() => changeSort('probability')}>Prob. {sort === 'probability' ? descending ? '↓' : '↑' : '↕'}</button></th>
-                      <th scope="col" aria-sort={sort === 'raw_score' ? descending ? 'descending' : 'ascending' : 'none'}><button onClick={() => changeSort('raw_score')}>Raw {sort === 'raw_score' ? descending ? '↓' : '↑' : '↕'}</button></th></tr></thead>
-                    <tbody>{contacts.map(item => (
-                      <tr key={item.id} className={selected === item.id ? 'active' : ''}>
-                        <td><button onClick={() => chooseContact(item.id)} aria-pressed={selected === item.id}
-                          onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); chooseContact(item.id); setZoomRequest(n => n + 1); } }}>
-                          <span className={preview?.flags.has(item.id) ? 'ns-table-flag flagged' : 'ns-table-flag'} aria-label={preview?.flags.has(item.id) ? 'Flagged' : 'Below threshold'} />
-                          {item.id}<small> / {String(item.imageIndex + 1).padStart(2, '0')}</small>
-                        </button></td><td>{percent(item.probability)}</td><td>{item.raw_score.toFixed(3)}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
+                {!hasGeoreference && <p className="ns-muted">Positions withdrawn: these images carry no georeference (upload a GeoTIFF mosaic to get map positions).</p>}
+                {hasGeoreference && (
+                  <div className="ns-contact-tabs" aria-label="Contact views">
+                    <button aria-pressed={contactsView === 'contacts'} onClick={() => setContactsView('contacts')}>Contacts</button>
+                    <button aria-pressed={contactsView === 'map'} onClick={() => setContactsView('map')}>Map</button>
+                  </div>
                 )}
+                {hasGeoreference && contactsView === 'map' ? <ContactMap result={result} selected={selected} onSelect={chooseContact} /> :
+                  !contacts.length ? <p className="ns-muted">No contacts were returned. A clear image is not evidence of absence; try another survey or review the source image.</p> : (
+                    <table>
+                      <caption className="ns-sr-only">Contacts across every image. Select a row; j and k move selection.</caption>
+                      <thead><tr><th scope="col">Contact</th>
+                        <th scope="col" aria-sort={sort === 'probability' ? descending ? 'descending' : 'ascending' : 'none'}><button onClick={() => changeSort('probability')}>Prob. {sort === 'probability' ? descending ? '↓' : '↑' : '↕'}</button></th>
+                        <th scope="col" aria-sort={sort === 'raw_score' ? descending ? 'descending' : 'ascending' : 'none'}><button onClick={() => changeSort('raw_score')}>Raw {sort === 'raw_score' ? descending ? '↓' : '↑' : '↕'}</button></th></tr></thead>
+                      <tbody>{contacts.map(item => (
+                        <tr key={item.id} className={selected === item.id ? 'active' : ''}>
+                          <td><button onClick={() => chooseContact(item.id)} aria-pressed={selected === item.id}
+                            onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); chooseContact(item.id); setZoomRequest(n => n + 1); } }}>
+                            <span className={preview?.flags.has(item.id) ? 'ns-table-flag flagged' : 'ns-table-flag'} aria-label={preview?.flags.has(item.id) ? 'Flagged' : 'Below threshold'} />
+                            {item.id}<small> / {String(item.imageIndex + 1).padStart(2, '0')}</small>
+                          </button></td><td>{percent(item.probability)}</td><td>{item.raw_score.toFixed(3)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  )}
               </section>
             </>
           )}
