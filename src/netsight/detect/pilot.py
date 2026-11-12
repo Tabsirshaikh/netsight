@@ -266,6 +266,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--sonar-aug", action="store_true", help="speckle, along-track blur and stretch"
     )
+    ap.add_argument(
+        "--pseudo",
+        default=None,
+        help="JSON from netsight.detect.pseudo_label: unlabelled survey images with model boxes",
+    )
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--model-id", default=None, help="name recorded in the model label")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
@@ -291,6 +296,28 @@ def main(argv: list[str] | None = None) -> int:
     for part in ("val", "test"):
         splits[part] = {k: v for k, v in splits[part].items() if k.split("_")[0] in chosen}
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
+    if args.pseudo:  # self-training: add pseudo-labelled survey images (no ground truth used)
+        import dataclasses
+        import json as _json
+
+        pseudo = _json.loads(Path(args.pseudo).read_text("utf-8"))
+        by_member = {
+            (smp.zip_path, smp.member): smp for part in splits["test"].values() for smp in part
+        }
+        added = 0
+        for rows in pseudo["sets"].values():
+            for row in rows:
+                smp = by_member[(row["zip_path"], row["member"])]
+                splits["train"].append(
+                    dataclasses.replace(
+                        smp,
+                        boxes=np.asarray(row["boxes"], float).reshape(-1, 4),
+                        labels=["object"] * len(row["boxes"]),
+                        group="pseudo:" + smp.group,
+                    )
+                )
+                added += 1
+        print(f"self-training: {added} pseudo-labelled images added", flush=True)
     if args.init_from:  # fine-tune a trained NetSight model; its datasets are inherited
         from transformers import AutoImageProcessor, DFineForObjectDetection
 

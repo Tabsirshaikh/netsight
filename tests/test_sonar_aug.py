@@ -25,3 +25,12 @@ def test_sonar_augment_keeps_shape_and_valid_boxes():
             assert b[0, 0] == pytest.approx(70) and b[0, 2] == pytest.approx(90)  # x unchanged
             y0, y1 = int(round(b[0, 1])), int(round(b[0, 3]))
             assert out[y0 + 2 : y1 - 2, 72:88].mean() > out[:20].mean()  # object still under box
+
+
+def test_pseudo_select_rejects_ambiguous_images():
+    from netsight.detect.pseudo_label import select
+
+    b = np.array([[0, 0, 5, 5], [10, 10, 20, 20]], float)
+    assert select(b, np.array([0.9, 0.05]), 0.5, 0.15).tolist() == [[0, 0, 5, 5]]
+    assert select(b, np.array([0.9, 0.3]), 0.5, 0.15) is None
+    assert len(select(b, np.array([0.1, 0.05]), 0.5, 0.15)) == 0
