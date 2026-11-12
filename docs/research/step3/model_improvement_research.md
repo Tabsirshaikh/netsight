@@ -88,6 +88,39 @@ Large measured gains when the test domain differs, little labelled data:
 - generic self-supervised pretraining: modest (+0.5 to +4 points) and costly.
 All natural-image or random-split evidence; each must be verified on our held-out surveys.
 
-## 6. Experiments running / planned
+## 6. Verification runs (short proxies, paired test comparison)
 
-See section 7 (filled in as results arrive).
+Proxy = v0.4 recipe, 8 epochs x 4,000 tiles, seed 0, no early stop (~1 h each). Each change is
+compared with the same proxy baseline on the same held-out images (image bootstrap, 95% CI).
+
+| Change | IoU 0.5 result | IoU 0.3 result (finding, ignoring box shape) | Verdict |
+|---|---|---|---|
+| one class per dataset (separate box conventions) | Contact +0.038, SubPipe +0.126, AquaScan -0.061 (all beyond noise); others n.s. | Contact +0.037; GhostVision -0.032, SubPipe -0.032 | **rejected**: gain is mostly box shape, AquaScan worse |
+| sonar augmentation (speckle, along-track blur and stretch) | SubPipe +0.461; AquaScan -0.074, GhostVision -0.037, Contact -0.020 | AquaScan -0.049, GhostVision -0.051, Contact -0.024 | **rejected** |
+| self-training on unlabelled test surveys | not trained: pseudo-label precision measured first | Contact 22-33%, mine 18-36%, GhostVision 26-48% correct | **rejected**: labels would be mostly wrong |
+| ensembles of existing models (WBF) | -0.075 to +0.045 per set | | **rejected** |
+
+## 7. Conclusions and ranked plan
+
+Detector-side tricks are exhausted for this data: tiling, zoom, sonar augmentation, dataset
+classes, ensembles and self-training have all been measured and give no consistent gain on unseen
+surveys. The model already proposes 91-100% of objects; it cannot rank them above survey-specific
+clutter, and two of our measurements are distorted by labels. The levers that remain are data
+and labels:
+
+1. **Fix the labels (human time, no GPU).** (a) One box convention, object only (team decision):
+   relabel mine and SubPipe training boxes with the pre-labelling tool; (b) expert relabel of the
+   mine test years 2015/2021 (many confident "false alarms" are unlabelled mine-like objects);
+   (c) drop the 22 leaked SCTD test images and re-score. Effect: honest measurement first;
+   consistent training boxes (worth up to +0.04 to +0.13 AP50 on affected sets in the proxy).
+2. **More varied real surveys (the only lever measured to keep paying: ~+0.05 AP50 per doubling
+   of recordings).** Label public unlabelled side-scan (NOAA NCEI raw XTF, PANGAEA PS124) with the
+   pre-labelling tool; boulder dataset as hard negatives; partner data.
+3. **Only then** a bigger detector (D-FINE-M, about 2.3x compute) as one proxy run; literature
+   gains are in-domain only.
+4. **Multi-class model** is possible now for pot/trap, wreck, aircraft, person, mine-like, pipe and
+   rock from real data; ghost net, rope, tyre and container exist only in the synthetic ApertureLab
+   set, so those classes would be "trained on simulation, untested on real data".
+
+Trust-layer note: the label-free count rule (1 flag per image) caps recall at images/objects
+(mine 0.36, Contact 0.44); dense surveys need a budget per km2 or per image area.
