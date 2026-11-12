@@ -25,6 +25,7 @@ from ._common import (
 Contact = Mapping[str, Any]
 PathLike = str | Path
 _KML = "http://www.opengis.net/kml/2.2"
+ET.register_namespace("", _KML)  # plain <kml xmlns=...> tags; Google Earth dislikes ns0: prefixes
 _COLUMNS = (
     "contact_id,survey_id,lon,lat,semi_major_m,semi_minor_m,orientation_deg,"
     "p_real,p_lo,p_hi,claim_level,flagged,raw_score,image,x0,y0,x1,y1,"
@@ -242,7 +243,7 @@ def contacts_kml(contacts: Iterable[Contact], *, name: str, research_banner: str
                 f"{lon:.7f},{lat:.7f}" for lon, lat in ellipse_ring(*pos, *parameters)
             )
             _element(linear_ring, "coordinates", coordinates)
-    return ET.tostring(root, encoding="unicode")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True)
 
 
 def write_kml(

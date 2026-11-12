@@ -321,6 +321,115 @@ def write_evidence(context: dict[str, Any], out_dir: Path, ledger_path: Path) ->
     write_pack(pack, out_dir, ledger=Ledger(ledger_path))
 
 
+DOWNLOADS = {
+    "evidence_pack.json": "application/json",
+    "evidence_pack.html": "text/html",
+    "contacts.geojson": "application/geo+json",
+    "contacts.kml": "application/vnd.google-earth.kml+xml",
+    "contacts.csv": "text/csv",
+    "verification_plan.json": "application/json",
+    "completeness.json": "application/json",
+}
+COMPLETENESS_GRID = (3, 3)
+COMPLETENESS_PASSES = 3
+COMPLETENESS_PER_PASS = 6
+BANNER = (
+    "RESEARCH OUTPUT - research model trained partly on research-only data; not for "
+    "navigation, safety or legal decisions."
+)
+
+
+def measure_completeness(
+    runtime: Runtime,
+    bundle: Any,
+    images: list[tuple[str, np.ndarray, bytes]],
+    predictions: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    threshold: float,
+    tta: bool,
+) -> dict[str, Any]:
+    """Inject reference targets into the survey's own images and measure Pd per image block."""
+    from netsight.trust.bounds import one_sided_lower
+    from netsight.trust.injection import completeness_map
+
+    flagged = [
+        np.sqrt((b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1]))[s >= threshold]
+        for b, s, _ in predictions
+    ]
+    sizes = np.concatenate(flagged) if flagged else np.empty(0)
+    target_px = int(np.clip(np.median(sizes) if sizes.size else 24, 10, 120))
+
+    def predict(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return runtime.predictor(
+            bundle.model,
+            bundle.processor,
+            image,
+            tile_px=640,
+            device=runtime.device,
+            views="hflip" if tta else "none",
+        )
+
+    cells = completeness_map(
+        [image for _, image, _ in images],
+        [(b, s) for b, s, _ in predictions],
+        predict,
+        threshold,
+        target_px=target_px,
+        rng=np.random.default_rng(0),
+        passes=COMPLETENESS_PASSES,
+        per_pass=COMPLETENESS_PER_PASS,
+        grid=COMPLETENESS_GRID,
+    )
+    ok = [c for c in cells if c.status == "ok"]
+    n = sum(c.n_trials for c in cells)
+    k = sum(c.n_detected for c in cells)
+    return {
+        "method": (
+            "parametric reference targets (block with shadow, flat patch) injected on the "
+            "seabed of this survey, detected at this survey's operating threshold"
+        ),
+        "target_px": target_px,
+        "grid": list(COMPLETENESS_GRID),
+        "trials": n,
+        "detected": k,
+        "pd": k / n if n else None,
+        "pd_lower90": one_sided_lower(k, n, alpha=0.10) if n else None,
+        "cells_ok": len(ok),
+        "cells": [c.to_dict() for c in cells],
+        "caveat": (
+            "Reference targets are simplified shapes, not replicas of real objects; cells with "
+            "fewer than 5 trials are marked insufficient, not estimated."
+        ),
+    }
+
+
+def write_survey_exports(
+    out_dir: Path,
+    survey_id: str,
+    contacts: list[dict[str, Any]],
+    claim_level: str,
+    images: list[tuple[str, np.ndarray, bytes]],
+    georefs: list[Any],
+    completeness: dict[str, Any] | None,
+) -> dict[str, str]:
+    from netsight.app.geo_outputs import export_records, write_completeness_tiff, write_exports
+
+    records = export_records(contacts, survey_id, claim_level)
+    files = write_exports(out_dir, records, banner=BANNER, name=f"NetSight survey {survey_id}")
+    if completeness is not None:
+        (out_dir / "completeness.json").write_text(json.dumps(json_safe(completeness)), "utf-8")
+        files["completeness"] = "completeness.json"
+        for i, ((_, image, _), georef) in enumerate(zip(images, georefs, strict=True)):
+            if georef is None:
+                continue
+            cells = [c for c in completeness["cells"] if c["image_index"] == i]
+            name = f"completeness_{i}.tif"
+            write_completeness_tiff(
+                out_dir / name, cells, georef, image.shape[:2], COMPLETENESS_GRID, banner=BANNER
+            )
+            files[f"completeness_tif_{i}"] = name
+    return files
+
+
 def analyze_sync(
     runtime: Runtime,
     images: list[tuple[str, np.ndarray, bytes]],
@@ -329,8 +438,12 @@ def analyze_sync(
     budget: float,
     tta: bool,
     show_all: bool = False,
+    completeness: bool = False,
 ) -> dict[str, Any]:
+    from netsight.app.geo_outputs import contact_position, georeference
+
     started = time.perf_counter()
+    georefs = [georeference(data, name) for name, _, data in images]
     bundle = runtime.models[model_key]
     predictions: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for _, image, _ in images:
@@ -400,7 +513,11 @@ def analyze_sync(
                         "raw_score": float(score),
                         "probability": float(probability),
                         "evidence": evidence,
-                        "position": None,
+                        "position": (
+                            contact_position(georefs[index], tuple(float(x) for x in box))
+                            if georefs[index] is not None
+                            else None
+                        ),
                         "review": None,
                     }
                 )
@@ -434,10 +551,18 @@ def analyze_sync(
         "created": datetime.now(UTC).isoformat(),
         "inputs": {name: hashlib.sha256(data).hexdigest() for name, _, data in images},
     }
+    completeness_result = (
+        measure_completeness(runtime, bundle, images, predictions, threshold, tta)
+        if completeness
+        else None
+    )
     out_dir = runtime.output_dir / survey_id
     out_dir.mkdir(parents=True, exist_ok=False)
     try:
         (runtime.pack_writer or write_evidence)(context, out_dir, runtime.ledger_path)
+        exports = write_survey_exports(
+            out_dir, survey_id, contacts, claim.level, images, georefs, completeness_result
+        )
         previews = out_dir / "images"
         previews.mkdir(exist_ok=True)
         for index, (_, image, _) in enumerate(images):
@@ -473,7 +598,13 @@ def analyze_sync(
             "packs": {
                 "json": f"/api/packs/{survey_id}/evidence_pack.json",
                 "html": f"/api/packs/{survey_id}/evidence_pack.html",
+                **{k: f"/api/packs/{survey_id}/{v}" for k, v in exports.items()},
             },
+            "georeferenced": [g is not None for g in georefs],
+            "positions": {
+                c["contact_id"]: c["position"] for c in contacts if c["position"] is not None
+            },
+            "completeness": completeness_result,
             "profile": profile,
             "tta": tta,
         }
@@ -566,6 +697,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
         budget: float = Form(default=1.0),
         tta: bool = Form(default=True),
         show_all: bool = Form(default=False),
+        completeness: bool = Form(default=False),
     ) -> dict:
         if model not in {"general", "ghost-gear"}:
             raise HTTPException(422, "model must be general or ghost-gear.")
@@ -637,7 +769,15 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             try:
                 with anyio.CancelScope(shield=True):
                     return await anyio.to_thread.run_sync(
-                        analyze_sync, state, images, model, profile, budget, tta, show_all
+                        analyze_sync,
+                        state,
+                        images,
+                        model,
+                        profile,
+                        budget,
+                        tta,
+                        show_all,
+                        completeness,
                     )
             except HTTPException:
                 raise
@@ -666,7 +806,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
 
     @app.get("/api/packs/{survey_id}/{filename}")
     async def download(survey_id: str, filename: str) -> FileResponse:
-        if filename not in {"evidence_pack.json", "evidence_pack.html"}:
+        if filename not in DOWNLOADS and not re.fullmatch(r"completeness_\d{1,2}\.tif", filename):
             raise HTTPException(404, "Unknown pack file.")
         state = await get_runtime()
         path = pack_directory(state, survey_id) / filename
@@ -674,8 +814,8 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             raise HTTPException(404, "Evidence pack not found.")
         return FileResponse(
             path,
-            media_type="application/json" if filename.endswith(".json") else "text/html",
-            filename=filename if filename.endswith(".json") else None,
+            media_type=DOWNLOADS.get(filename, "image/tiff"),
+            filename=None if filename.endswith(".html") else filename,
         )
 
     return app
