@@ -156,3 +156,42 @@ def test_run_trials_alignment_checked():
             _bright_spot_detector,
             rng=np.random.default_rng(0),
         )
+
+
+def test_completeness_map_grid_and_bounds():
+    from netsight.trust.injection import completeness_map
+
+    rng = np.random.default_rng(2)
+    img = _seabed(h=120, w=180)
+    cells = completeness_map(
+        [img],
+        [_bright_spot_detector(img)],
+        _bright_spot_detector,
+        0.5,
+        target_px=8,
+        rng=rng,
+        passes=3,
+        per_pass=4,
+        grid=(2, 3),
+        min_trials=1,
+    )
+    assert len(cells) == 6
+    assert sum(c.n_trials for c in cells) > 0
+    for c in cells:
+        if c.n_trials:
+            assert 0 <= c.pd_lower <= c.pd <= 1
+        else:
+            assert np.isnan(c.pd)
+
+
+def test_targets_never_placed_off_seabed():
+    from netsight.trust.injection import seabed_mask
+
+    img = _seabed(h=200, w=300)
+    img[:, 120:180] = 5  # dark water column at nadir
+    mask = seabed_mask(img)
+    assert not mask[:, 140:160].any() and mask[:, :100].all()
+    rng = np.random.default_rng(4)
+    t = parametric_target("block", 10)
+    for x, _ in free_positions((200, 300), t, 20, rng, avoid=np.zeros((0, 4)), allowed=mask):
+        assert x + t.shape[1] <= 120 or x >= 180

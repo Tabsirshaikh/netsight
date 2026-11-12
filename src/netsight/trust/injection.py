@@ -238,6 +238,25 @@ def _overlaps_any(box: Sequence[float], boxes: np.ndarray, pad: float) -> bool:
     )
 
 
+def seabed_mask(
+    image: np.ndarray,
+    *,
+    window: int = 31,
+    quantile: float = 75.0,
+    frac: float = 0.5,
+    min_level: float = 20.0,
+) -> np.ndarray:
+    """Pixels that look like insonified seabed: local mean brightness at least ``frac`` of the
+    image's ``quantile`` brightness (and ``min_level``). Excludes the water column at nadir,
+    lost far range and blank borders, where no object could be seen and none is injected."""
+    from scipy.ndimage import uniform_filter
+
+    img = np.asarray(image, dtype=np.float64)
+    local = uniform_filter(img, size=window, mode="nearest")
+    level = max(frac * float(np.percentile(img, quantile)), min_level)
+    return local >= level
+
+
 def free_positions(
     shape: tuple[int, int],
     template: TargetTemplate,
@@ -247,6 +266,7 @@ def free_positions(
     avoid: np.ndarray,
     margin: int = 8,
     max_tries: int = 400,
+    allowed: np.ndarray | None = None,
 ) -> list[tuple[int, int]]:
     """Up to ``n`` top-left positions whose template footprint avoids ``avoid`` boxes and the
     other chosen positions."""
@@ -262,6 +282,8 @@ def free_positions(
         x = int(rng.integers(margin, w - tw - margin + 1))
         y = int(rng.integers(margin, h - th - margin + 1))
         box = (x, y, x + tw, y + th)
+        if allowed is not None and not allowed[y : y + th, x : x + tw].all():
+            continue
         if _overlaps_any(box, np.array(taken).reshape(-1, 4), pad=margin):
             continue
         taken.append(np.array(box, float))
@@ -301,6 +323,7 @@ def run_trials(
     rng: np.random.Generator,
     min_base_score: float = 0.05,
     match_iou: float = 0.3,
+    seabed_only: bool = True,
 ) -> list[Trial]:
     """Inject the templates chosen for each image, re-run the detector once per image.
 
@@ -318,8 +341,9 @@ def run_trials(
         avoid = np.concatenate([np.asarray(labelled[i], float).reshape(-1, 4), base_boxes[keep]])
         placed: list[tuple[TargetTemplate, tuple[float, float, float, float], float]] = []
         current = image
+        allowed = seabed_mask(image) if seabed_only else None
         for tmpl in templates(i, rng):
-            pos = free_positions(image.shape[:2], tmpl, 1, rng, avoid=avoid)
+            pos = free_positions(image.shape[:2], tmpl, 1, rng, avoid=avoid, allowed=allowed)
             if not pos:
                 continue
             x, y = pos[0]
@@ -358,3 +382,103 @@ def with_strata(trials: Sequence[Trial], cuts: tuple[float, float]) -> list[Tria
     from dataclasses import replace
 
     return [replace(t, stratum=texture_stratum(t.texture, cuts)) for t in trials]
+
+
+@dataclass(frozen=True)
+class CompletenessCell:
+    """Pd for one block of one image, from injected reference targets."""
+
+    image_index: int
+    row: int
+    col: int
+    box: tuple[float, float, float, float]
+    n_trials: int
+    n_detected: int
+    pd: float
+    pd_lower: float
+    status: str  # "ok" or "insufficient_trials"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def completeness_map(
+    images: Sequence[np.ndarray],
+    base_predictions: Sequence[tuple[np.ndarray, np.ndarray]],
+    predict: Predictor,
+    threshold: float,
+    *,
+    target_px: int,
+    rng: np.random.Generator,
+    passes: int = 4,
+    per_pass: int = 6,
+    grid: tuple[int, int] = (3, 3),
+    alpha: float = 0.10,
+    min_trials: int = 5,
+) -> list[CompletenessCell]:
+    """Per-image grid of Pd (with one-sided lower bounds) for parametric reference targets.
+
+    Each pass pastes ``per_pass`` targets (block with shadow or flat patch, alternating) at free
+    places and re-runs the detector once. A target counts as detected when an overlapping
+    detection scores at or above the survey's operating ``threshold``. With few trials per cell
+    the bounds are wide; cells under ``min_trials`` are marked insufficient, never filled in.
+    """
+    from netsight.trust.bounds import one_sided_lower
+
+    rows, cols = grid
+    out: list[CompletenessCell] = []
+    for i, image in enumerate(images):
+        h, w = image.shape[:2]
+        counts = np.zeros((rows, cols, 2), int)
+        for p in range(passes):
+
+            def templates(_k: int, r: np.random.Generator, p: int = p) -> list[TargetTemplate]:
+                out_t = []
+                for j in range(per_pass):
+                    if (j + p) % 2 == 0:
+                        side = "right" if r.random() < 0.5 else "left"
+                        out_t.append(
+                            parametric_target(
+                                "block", target_px, shadow_px=target_px, shadow_side=side
+                            )
+                        )
+                    else:
+                        out_t.append(parametric_target("flat_patch", target_px))
+                return out_t
+
+            trials = run_trials(
+                [image],
+                ["survey"],
+                [np.zeros((0, 4))],
+                [base_predictions[i]],
+                templates,
+                predict,
+                rng=rng,
+            )
+            for t in trials:
+                cx, cy = (t.box[0] + t.box[2]) / 2, (t.box[1] + t.box[3]) / 2
+                r_, c_ = min(int(cy / h * rows), rows - 1), min(int(cx / w * cols), cols - 1)
+                counts[r_, c_, 0] += int(t.detected(threshold))
+                counts[r_, c_, 1] += 1
+        for r_ in range(rows):
+            for c_ in range(cols):
+                k, n = (int(v) for v in counts[r_, c_])
+                out.append(
+                    CompletenessCell(
+                        image_index=i,
+                        row=r_,
+                        col=c_,
+                        box=(
+                            c_ * w / cols,
+                            r_ * h / rows,
+                            (c_ + 1) * w / cols,
+                            (r_ + 1) * h / rows,
+                        ),
+                        n_trials=n,
+                        n_detected=k,
+                        pd=k / n if n else float("nan"),
+                        pd_lower=one_sided_lower(k, n, alpha=alpha) if n else float("nan"),
+                        status="ok" if n >= min_trials else "insufficient_trials",
+                    )
+                )
+    return out
