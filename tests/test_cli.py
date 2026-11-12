@@ -35,8 +35,16 @@ def write_tiff(path):
     data = np.full((10, 20), 120, dtype=np.uint8)
     data[:3, :4] = 0
     with rasterio.open(
-        path, "w", driver="GTiff", width=20, height=10, count=1, dtype="uint8",
-        crs="EPSG:32619", transform=from_origin(300000.0, 4500000.0, 1.0, 1.0), nodata=0,
+        path,
+        "w",
+        driver="GTiff",
+        width=20,
+        height=10,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:32619",
+        transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
+        nodata=0,
     ) as dst:
         dst.write(data, 1)
     return path
@@ -247,8 +255,19 @@ def test_noaa_contacts_from_local_dr(tmp_path, monkeypatch, capsys):
     _local_dr(tmp_path, "H99999", [["Number of items investigated 1"], [row]])
     _local_dr(tmp_path, "H99998", [["Nothing tabulated here."]])
     out, summ = tmp_path / "c.csv", tmp_path / "s.csv"
-    rc = main(["noaa", "contacts", "H99999", "h99998", "--no-fetch",
-               "--out", str(out), "--summary", str(summ)])
+    rc = main(
+        [
+            "noaa",
+            "contacts",
+            "H99999",
+            "h99998",
+            "--no-fetch",
+            "--out",
+            str(out),
+            "--summary",
+            str(summ),
+        ]
+    )
     assert rc == 0
     text = capsys.readouterr().out
     assert "H99999: 1 contact rows" in text and "H99998: 0 contact rows" in text
@@ -303,8 +322,20 @@ def test_noaa_contacts_writes_feature_items(tmp_path, monkeypatch, capsys):
     ]
     _local_dr(tmp_path, "H99997", [["Feature Report"], item])
     feats = tmp_path / "f.csv"
-    rc = main(["noaa", "contacts", "H99997", "--no-fetch", "--out", str(tmp_path / "c.csv"),
-               "--features", str(feats), "--summary", str(tmp_path / "s.csv")])
+    rc = main(
+        [
+            "noaa",
+            "contacts",
+            "H99997",
+            "--no-fetch",
+            "--out",
+            str(tmp_path / "c.csv"),
+            "--features",
+            str(feats),
+            "--summary",
+            str(tmp_path / "s.csv"),
+        ]
+    )
     assert rc == 0
     text = capsys.readouterr().out
     assert "H99997: 0 contact rows, 1 feature items (1 decided)" in text

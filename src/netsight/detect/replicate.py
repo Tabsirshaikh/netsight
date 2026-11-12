@@ -37,12 +37,24 @@ def random_image_split(
     n_test = round(len(samples) * test_fraction)
     n_val = round(len(samples) * val_fraction)
     pick = [samples[i] for i in order]
-    return {"test": pick[:n_test], "val": pick[n_test:n_test + n_val],
-            "train": pick[n_test + n_val:]}
+    return {
+        "test": pick[:n_test],
+        "val": pick[n_test : n_test + n_val],
+        "train": pick[n_test + n_val :],
+    }
 
 
-def train_and_test(split: dict, *, epochs: int, out: Path, seed: int, tile: int = 640,
-                   batch: int = 8, lr: float = 2e-4, eval_every: int = 5) -> dict:
+def train_and_test(
+    split: dict,
+    *,
+    epochs: int,
+    out: Path,
+    seed: int,
+    tile: int = 640,
+    batch: int = 8,
+    lr: float = 2e-4,
+    eval_every: int = 5,
+) -> dict:
     """Same recipe as the pilot runner (kept separate so a running pilot is never touched)."""
     import torch
     from torch.utils.data import DataLoader
@@ -69,15 +81,18 @@ def train_and_test(split: dict, *, epochs: int, out: Path, seed: int, tile: int 
     n_tiles = len(balanced_tiles(split["train"], tile, neg_ratio=0.5, max_tiles=8000, seed=seed))
     total = max(1, n_tiles // batch) * epochs
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10)))
+        opt, lambda s: warmup_cosine(s, total, warmup=min(300, total // 10))
+    )
     out.mkdir(parents=True, exist_ok=True)
     best, history = -1.0, []
     for epoch in range(epochs):
-        tiles = balanced_tiles(split["train"], tile, neg_ratio=0.5, max_tiles=8000,
-                               seed=seed + epoch)
+        tiles = balanced_tiles(
+            split["train"], tile, neg_ratio=0.5, max_tiles=8000, seed=seed + epoch
+        )
         ds = TileDataset(split["train"], tiles, augment=True, seed=seed + epoch, cache=cache)
-        loader = DataLoader(ds, batch_size=batch, shuffle=True, collate_fn=collate,
-                            num_workers=0, drop_last=True)
+        loader = DataLoader(
+            ds, batch_size=batch, shuffle=True, collate_fn=collate, num_workers=0, drop_last=True
+        )
         model.train()
         t0, losses = time.time(), []
         for pixels, labels in loader:
@@ -104,10 +119,13 @@ def train_and_test(split: dict, *, epochs: int, out: Path, seed: int, tile: int 
 
     model = DFineForObjectDetection.from_pretrained(out / "model").to(device)
     test = evaluate(model, processor, split["test"], tile, cache, device)
-    result = {"best_val_ap50": best, "test": test, "history": history,
-              "n_images": {k: len(v) for k, v in split.items()}}
-    (out / "metrics.json").write_text(json.dumps(result, indent=2, default=float),
-                                      encoding="utf-8")
+    result = {
+        "best_val_ap50": best,
+        "test": test,
+        "history": history,
+        "n_images": {k: len(v) for k, v in split.items()},
+    }
+    (out / "metrics.json").write_text(json.dumps(result, indent=2, default=float), encoding="utf-8")
     return result
 
 
@@ -121,8 +139,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
     raw = data_dir() / "raw" / "mine_detection_sss"
-    mine = read_yolo_zip([raw / f"{y}.zip" for y in MINE_YEARS], "mine_detection_sss",
-                         ["MILCO", "NOMBO"])
+    mine = read_yolo_zip(
+        [raw / f"{y}.zip" for y in MINE_YEARS], "mine_detection_sss", ["MILCO", "NOMBO"]
+    )
     mine, _ = drop_unreadable(mine, data_dir() / "processed" / "unreadable_images.json")
     splits = {
         "random": random_image_split(mine, test_fraction=0.2, val_fraction=0.1, seed=args.seed),
@@ -131,12 +150,19 @@ def main(argv: list[str] | None = None) -> int:
     summary = {}
     for name, split in splits.items():
         r = train_and_test(split, epochs=args.epochs, out=Path(args.out) / name, seed=args.seed)
-        summary[name] = {k: r["test"][k] for k in ("ap50", "ap50_small",
-                                                     "recall_at_0.5_fp_per_image",
-                                                     "recall_at_1_fp_per_image")}
+        summary[name] = {
+            k: r["test"][k]
+            for k in (
+                "ap50",
+                "ap50_small",
+                "recall_at_0.5_fp_per_image",
+                "recall_at_1_fp_per_image",
+            )
+        }
         summary[name]["n_test_images"] = r["n_images"]["test"]
-    (Path(args.out) / "summary.json").write_text(json.dumps(summary, indent=2, default=float),
-                                                 encoding="utf-8")
+    (Path(args.out) / "summary.json").write_text(
+        json.dumps(summary, indent=2, default=float), encoding="utf-8"
+    )
     print(json.dumps(summary, indent=2, default=float))
     return 0
 

@@ -13,8 +13,16 @@ def write_tiff(path, crs="EPSG:32619", nodata=0):
     data = np.full((10, 20), 120, dtype=np.uint8)
     data[:3, :4] = 0
     with rasterio.open(
-        path, "w", driver="GTiff", width=20, height=10, count=1, dtype="uint8",
-        crs=crs, transform=from_origin(300000.0, 4500000.0, 1.0, 1.0), nodata=nodata,
+        path,
+        "w",
+        driver="GTiff",
+        width=20,
+        height=10,
+        count=1,
+        dtype="uint8",
+        crs=crs,
+        transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
+        nodata=nodata,
     ) as dst:
         dst.write(data, 1)
     return path
@@ -47,9 +55,16 @@ def write_raw(path, data, crs="EPSG:32619", nodata=None):
         data = data[np.newaxis]
     count, height, width = data.shape
     with rasterio.open(
-        path, "w", driver="GTiff", width=width, height=height, count=count,
-        dtype=str(data.dtype), crs=crs,
-        transform=from_origin(300000.0, 4500000.0, 1.0, 1.0), nodata=nodata,
+        path,
+        "w",
+        driver="GTiff",
+        width=width,
+        height=height,
+        count=count,
+        dtype=str(data.dtype),
+        crs=crs,
+        transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
+        nodata=nodata,
     ) as dst:
         dst.write(data)
     return path
@@ -114,8 +129,15 @@ def test_dataset_mask_band_is_honoured(tmp_path):
     mask = np.full((10, 10), 255, dtype=np.uint8)
     mask[:2, :] = 0
     with rasterio.open(
-        path, "w", driver="GTiff", width=10, height=10, count=1, dtype="uint8",
-        crs="EPSG:32619", transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
+        path,
+        "w",
+        driver="GTiff",
+        width=10,
+        height=10,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:32619",
+        transform=from_origin(300000.0, 4500000.0, 1.0, 1.0),
     ) as dst:
         dst.write(data, 1)
         dst.write_mask(mask)

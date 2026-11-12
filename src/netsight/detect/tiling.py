@@ -229,8 +229,9 @@ def scale_boxes(boxes: FloatArray, sx: float, sy: float) -> FloatArray:
 FULL_IMAGE_MAX_ASPECT = 2.0
 
 
-def full_image_pass_allowed(width: int, height: int, *, n_tiles: int,
-                            max_aspect: float = FULL_IMAGE_MAX_ASPECT) -> bool:
+def full_image_pass_allowed(
+    width: int, height: int, *, n_tiles: int, max_aspect: float = FULL_IMAGE_MAX_ASPECT
+) -> bool:
     """Add a whole-image pass only when the image was tiled and resizing it to the square
     network input would not distort it badly (a 5000x500 waterfall would shrink 10:1)."""
     aspect = max(width, height) / max(1, min(width, height))

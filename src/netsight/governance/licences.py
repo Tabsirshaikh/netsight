@@ -76,7 +76,8 @@ def validate_register(entries: list[dict]) -> list[str]:
             errors.append(f"{label}: missing keys {missing}")
             continue
         not_strings = [
-            k for k in ("id", "tier", "licence_status", "availability")
+            k
+            for k in ("id", "tier", "licence_status", "availability")
             if k in e and not isinstance(e[k], str)
         ]
         if not_strings:

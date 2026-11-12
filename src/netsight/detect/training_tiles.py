@@ -49,8 +49,8 @@ def keep_boxes(
     visible = np.divide(area, full, out=np.zeros_like(area), where=full > 0)
     intersects = area > 0
     big_enough = np.all(sides >= min_keep_px, axis=1)
-    kept = intersects & ((visible >= min_visible) | big_enough) & np.all(
-        sides >= min_size_px, axis=1
+    kept = (
+        intersects & ((visible >= min_visible) | big_enough) & np.all(sides >= min_size_px, axis=1)
     )
     offset = np.array([tile.x0, tile.y0, tile.x0, tile.y0], dtype=float)
     return clipped[kept] - offset, np.flatnonzero(kept), np.flatnonzero(intersects & ~kept)
@@ -115,9 +115,13 @@ def balanced_tiles(
     per: dict[str, list[TrainTile]] = {}
     for k, ds_id in enumerate(ids):
         idx = [i for i, s in enumerate(samples) if s.dataset_id == ds_id]
-        tiles = build_train_tiles([samples[i] for i in idx], tile_px, neg_ratio=neg_ratio,
-                                  max_tiles=max_tiles // len(ids),
-                                  rng=np.random.default_rng(seed * 100 + k))
+        tiles = build_train_tiles(
+            [samples[i] for i in idx],
+            tile_px,
+            neg_ratio=neg_ratio,
+            max_tiles=max_tiles // len(ids),
+            rng=np.random.default_rng(seed * 100 + k),
+        )
         per[ds_id] = [TrainTile(idx[t.sample_index], t.tile, t.boxes) for t in tiles]
     if 0.0 < min_share < 1.0 and max_repeat > 1:
         total = sum(len(v) for v in per.values())

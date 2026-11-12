@@ -63,8 +63,9 @@ class _RangeIgnored(Exception):
     """The server answered a Range request with the whole file."""
 
 
-def _fetch_range(url: str, seg: Path, start: int, end: int, *, timeout: float, attempts: int,
-                 retry_wait: float) -> None:
+def _fetch_range(
+    url: str, seg: Path, start: int, end: int, *, timeout: float, attempts: int, retry_wait: float
+) -> None:
     """Download bytes start..end (inclusive) into seg, resuming within the range on drops.
 
     Only attempts that deliver no new bytes count towards `attempts`: a slow, flaky link keeps
@@ -111,8 +112,16 @@ def _fetch_range(url: str, seg: Path, start: int, end: int, *, timeout: float, a
         raise DownloadError(f"segment {start}-{end}: {got} of {length} bytes after retries")
 
 
-def _download_segmented(url: str, part: Path, size: int, connections: int, *, timeout: float,
-                        attempts: int, retry_wait: float) -> bool:
+def _download_segmented(
+    url: str,
+    part: Path,
+    size: int,
+    connections: int,
+    *,
+    timeout: float,
+    attempts: int,
+    retry_wait: float,
+) -> bool:
     """Fill `part` up to `size` bytes with parallel range requests. False if Range is ignored."""
     done = part.stat().st_size if part.exists() else 0
     if done > size:
@@ -126,8 +135,16 @@ def _download_segmented(url: str, part: Path, size: int, connections: int, *, ti
     segs = [part.with_name(f"{part.name}.seg{k}") for k in range(n)]
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [
-            pool.submit(_fetch_range, url, segs[k], bounds[k], bounds[k + 1] - 1,
-                        timeout=timeout, attempts=attempts, retry_wait=retry_wait)
+            pool.submit(
+                _fetch_range,
+                url,
+                segs[k],
+                bounds[k],
+                bounds[k + 1] - 1,
+                timeout=timeout,
+                attempts=attempts,
+                retry_wait=retry_wait,
+            )
             for k in range(n)
         ]
         try:
@@ -146,8 +163,15 @@ def _download_segmented(url: str, part: Path, size: int, connections: int, *, ti
 
 
 def download(
-    url: str, dest: str | Path, *, size: int | None = None, md5: str | None = None,
-    timeout: float = 60.0, attempts: int = 8, retry_wait: float = 5.0, connections: int = 1,
+    url: str,
+    dest: str | Path,
+    *,
+    size: int | None = None,
+    md5: str | None = None,
+    timeout: float = 60.0,
+    attempts: int = 8,
+    retry_wait: float = 5.0,
+    connections: int = 1,
 ) -> Path:
     """Download url to dest via dest.part, resuming dropped connections; verify size and md5.
 
@@ -215,7 +239,10 @@ def tier_dir(data_root: str | Path, entry: dict) -> Path:
 
 
 def fetch_dataset_files(
-    entry: dict, data_root: str | Path, *, names: list[str] | None = None,
+    entry: dict,
+    data_root: str | Path,
+    *,
+    names: list[str] | None = None,
     connections: int = 1,
 ) -> list[Path]:
     """Download a register entry's files (all, or the named ones) into its tier directory."""
@@ -231,7 +258,12 @@ def fetch_dataset_files(
         raise DownloadError(f"{entry['id']}: no downloadable files listed in the register")
     target = tier_dir(data_root, entry)
     return [
-        download(f["url"], target / f["name"], size=f.get("size"), md5=f.get("md5"),
-                 connections=connections if f.get("size") else 1)
+        download(
+            f["url"],
+            target / f["name"],
+            size=f.get("size"),
+            md5=f.get("md5"),
+            connections=connections if f.get("size") else 1,
+        )
         for f in files
     ]

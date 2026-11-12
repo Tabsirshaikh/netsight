@@ -11,16 +11,41 @@ from netsight.models.manifest import (
 from netsight.trust.provenance import Ledger
 
 REGISTER = [
-    {"id": "clean_cc0", "title": "A", "licence": "CC0-1.0", "tier": "commercial",
-     "commercial_use": "yes"},
-    {"id": "clean_ccby", "title": "B", "licence": "CC-BY-4.0", "tier": "commercial",
-     "commercial_use": "yes"},
-    {"id": "clean_mit", "title": "C", "licence": "MIT", "tier": "commercial",
-     "commercial_use": "yes"},
-    {"id": "share_alike", "title": "D", "licence": "CC-BY-SA-4.0 vs GPL", "tier": "conditional",
-     "commercial_use": "conditional"},
-    {"id": "no_licence", "title": "E", "licence": "not stated", "tier": "research_only",
-     "commercial_use": "unknown"},
+    {
+        "id": "clean_cc0",
+        "title": "A",
+        "licence": "CC0-1.0",
+        "tier": "commercial",
+        "commercial_use": "yes",
+    },
+    {
+        "id": "clean_ccby",
+        "title": "B",
+        "licence": "CC-BY-4.0",
+        "tier": "commercial",
+        "commercial_use": "yes",
+    },
+    {
+        "id": "clean_mit",
+        "title": "C",
+        "licence": "MIT",
+        "tier": "commercial",
+        "commercial_use": "yes",
+    },
+    {
+        "id": "share_alike",
+        "title": "D",
+        "licence": "CC-BY-SA-4.0 vs GPL",
+        "tier": "conditional",
+        "commercial_use": "conditional",
+    },
+    {
+        "id": "no_licence",
+        "title": "E",
+        "licence": "not stated",
+        "tier": "research_only",
+        "commercial_use": "unknown",
+    },
 ]
 
 

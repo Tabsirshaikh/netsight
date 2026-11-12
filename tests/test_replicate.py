@@ -5,8 +5,12 @@ from netsight.detect.replicate import random_image_split
 
 
 def _samples(n):
-    return [DetectionSample("mine", "z.zip", f"{i:04d}.jpg", 10, 10, np.zeros((0, 4)), [],
-                            f"{2010 + i % 5}") for i in range(n)]
+    return [
+        DetectionSample(
+            "mine", "z.zip", f"{i:04d}.jpg", 10, 10, np.zeros((0, 4)), [], f"{2010 + i % 5}"
+        )
+        for i in range(n)
+    ]
 
 
 def test_random_split_ignores_groups_and_is_reproducible():

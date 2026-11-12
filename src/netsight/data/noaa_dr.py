@@ -165,7 +165,8 @@ def parse_contact_tables(
                         table_caption=caption,
                         disposition=disposition,
                         is_real_object=is_real,
-                        ground_truth="multibeam_developed" if depth is not None
+                        ground_truth="multibeam_developed"
+                        if depth is not None
                         else "expert_disposition",
                         page=page_no,
                     )

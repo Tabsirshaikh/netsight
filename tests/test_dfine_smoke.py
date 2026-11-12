@@ -70,8 +70,11 @@ def test_one_training_step_and_inference(tmp_path, model_and_processor):
     assert torch.isfinite(out.loss)
     out.loss.backward()
     opt.step()
-    image = np.asarray(Image.open(io.BytesIO(zipfile.ZipFile(samples[0].zip_path).read(
-        samples[0].member))).convert("L"))
+    image = np.asarray(
+        Image.open(
+            io.BytesIO(zipfile.ZipFile(samples[0].zip_path).read(samples[0].member))
+        ).convert("L")
+    )
     boxes, scores = predict_image(model, processor, image, tile_px=320, device=device)
     assert boxes.ndim == 2 and boxes.shape[1] == 4 and len(boxes) == len(scores)
     if len(boxes):
@@ -98,7 +101,8 @@ def test_fast_pixels_match_processor_resize(model_and_processor):
     rng = np.random.default_rng(0)
     crop = rng.integers(0, 255, (320, 320)).astype(np.uint8)
     ours = to_pixels([crop])[0]
-    ref = processor(images=[np.repeat(crop[:, :, None], 3, axis=2)],
-                    return_tensors="pt")["pixel_values"][0]
+    ref = processor(images=[np.repeat(crop[:, :, None], 3, axis=2)], return_tensors="pt")[
+        "pixel_values"
+    ][0]
     assert ours.shape == ref.shape == (3, 640, 640)
     assert float((ours - ref).abs().mean()) < 0.02  # same scaling, near-identical resize

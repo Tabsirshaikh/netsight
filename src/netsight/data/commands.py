@@ -15,9 +15,15 @@ from netsight.data.pdftext import extract_pages
 from netsight.governance.licences import default_register_path, load_register
 
 SUMMARY_FIELDS = [
-    "survey_id", "pages", "items_investigated", "contact_rows",
-    "contact_list_in_separate", "sss_coverage_percent", "mentions_side_scan",
-    "feature_items", "feature_items_decided",
+    "survey_id",
+    "pages",
+    "items_investigated",
+    "contact_rows",
+    "contact_list_in_separate",
+    "sss_coverage_percent",
+    "mentions_side_scan",
+    "feature_items",
+    "feature_items_decided",
 ]
 
 
@@ -25,8 +31,9 @@ def _cmd_data_fetch(args) -> int:
     entries = {e["id"]: e for e in load_register(args.register)}
     if args.dataset not in entries:
         raise ValueError(f"unknown dataset id {args.dataset!r}; known: {sorted(entries)}")
-    for path in fetch_dataset_files(entries[args.dataset], data_dir(), names=args.file or None,
-                                    connections=args.connections):
+    for path in fetch_dataset_files(
+        entries[args.dataset], data_dir(), names=args.file or None, connections=args.connections
+    ):
         print(path)
     return 0
 
@@ -100,8 +107,12 @@ def add_subcommands(sub) -> None:
     p_fetch.add_argument("dataset", help="dataset id in licences/datasets.yaml")
     p_fetch.add_argument("--file", action="append", help="only this file (repeatable)")
     p_fetch.add_argument("--register", default=str(default_register_path()))
-    p_fetch.add_argument("--connections", type=int, default=8,
-                         help="parallel range requests per file (servers cap each one)")
+    p_fetch.add_argument(
+        "--connections",
+        type=int,
+        default=8,
+        help="parallel range requests per file (servers cap each one)",
+    )
     p_fetch.set_defaults(func=_cmd_data_fetch)
 
     p_noaa = sub.add_parser("noaa", help="NOAA NCEI hydrographic surveys (CC0)")

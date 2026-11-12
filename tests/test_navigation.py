@@ -24,8 +24,10 @@ def test_sensor_position_preferred():
 
 
 def test_ship_with_layback_moves_position_behind_heading():
-    fix = select_position(**{**BASE, "ship_x": 0.0, "ship_y": 10.0, "layback_m": 100.0,
-                             "heading_deg": 0.0}, coord_kind=CoordKind.LATLON)
+    fix = select_position(
+        **{**BASE, "ship_x": 0.0, "ship_y": 10.0, "layback_m": 100.0, "heading_deg": 0.0},
+        coord_kind=CoordKind.LATLON,
+    )
     assert fix.source == NavSource.SHIP_LAYBACK
     assert fix.y == pytest.approx(10.0 - 100.0 / 111_320.0)
     assert fix.x == pytest.approx(0.0)

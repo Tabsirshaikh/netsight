@@ -58,10 +58,18 @@ def test_read_ghostvision_zip(tmp_path):
     z = tmp_path / "gv.zip"
     root = "sss-crab-pot-detection-ds"
     rows = {
-        "train": [{"file_name": "Rec7_wcp_ss_port_00035_jpg.rf.x.jpg",
-                   "objects": {"bbox": [[10, 20, 30, 40]], "category": ["Crab-Pot"]}}],
-        "test": [{"file_name": "Contact_203_sslo_png_jpg.rf.y.jpg",
-                  "objects": {"bbox": [], "category": []}}],
+        "train": [
+            {
+                "file_name": "Rec7_wcp_ss_port_00035_jpg.rf.x.jpg",
+                "objects": {"bbox": [[10, 20, 30, 40]], "category": ["Crab-Pot"]},
+            }
+        ],
+        "test": [
+            {
+                "file_name": "Contact_203_sslo_png_jpg.rf.y.jpg",
+                "objects": {"bbox": [], "category": []},
+            }
+        ],
     }
     with zipfile.ZipFile(z, "w") as f:
         for split, items in rows.items():
@@ -133,14 +141,18 @@ def test_read_coco_zip_groups_twin_frequencies_together(tmp_path):
     with zipfile.ZipFile(z, "w") as f:
         for band, w in (("HF", 500), ("LF", 250)):
             coco = {
-                "images": [{"id": 1, "file_name": "1693569954.939.pbm", "width": w, "height": 50},
-                           {"id": 2, "file_name": "1693570100.000.pbm", "width": w, "height": 50}],
-                "annotations": [{"id": 1, "image_id": 1, "category_id": 1,
-                                 "bbox": [10, 5, 20, 40]}],
+                "images": [
+                    {"id": 1, "file_name": "1693569954.939.pbm", "width": w, "height": 50},
+                    {"id": 2, "file_name": "1693570100.000.pbm", "width": w, "height": 50},
+                ],
+                "annotations": [
+                    {"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 5, 20, 40]}
+                ],
                 "categories": [{"id": 1, "name": "Pipeline"}],
             }
-            f.writestr(f"{base}/SSS_{band}_images/COCO_Annotation/coco_format.json",
-                       json.dumps(coco))
+            f.writestr(
+                f"{base}/SSS_{band}_images/COCO_Annotation/coco_format.json", json.dumps(coco)
+            )
             for im in coco["images"]:
                 f.writestr(f"{base}/SSS_{band}_images/Image/{im['file_name']}", _pgm(w, 50))
     samples = read_coco_zip(z, "subpipe_mini2", group_fn=subpipe_group)
@@ -162,11 +174,10 @@ def test_ordered_split_leaves_gaps_between_parts(tmp_path):
             f.writestr(f"g{g}_0.jpg", _jpeg(8, 8))
             f.writestr(f"g{g}_0.txt", "")
     samples = read_yolo_zip([z], "x", ["o"], group_fn=lambda n: n.split("_")[0])
-    split = ordered_group_split(samples, n_val=2, n_test=3, gap=1,
-                                key=lambda g: int(g[1:]))
+    split = ordered_group_split(samples, n_val=2, n_test=3, gap=1, key=lambda g: int(g[1:]))
     groups = {k: sorted({s.group for s in v}, key=lambda g: int(g[1:])) for k, v in split.items()}
     assert groups["test"] == ["g7", "g8", "g9"]
-    assert groups["val"] == ["g4", "g5"]          # g6 is the gap before test
+    assert groups["val"] == ["g4", "g5"]  # g6 is the gap before test
     assert groups["train"] == ["g0", "g1", "g2"]  # g3 is the gap before val
     with pytest.raises(ValueError):
         ordered_group_split(samples, n_val=5, n_test=5, gap=1)
@@ -179,7 +190,8 @@ def test_drop_unreadable_excludes_truncated_images_and_caches(tmp_path):
     Image.new("L", (64, 64), 50).save(good, format="PNG")
     noisy = io.BytesIO()
     Image.fromarray(np.random.default_rng(0).integers(0, 255, (64, 64)).astype(np.uint8)).save(
-        noisy, format="PNG")
+        noisy, format="PNG"
+    )
     truncated = noisy.getvalue()[: len(noisy.getvalue()) // 2]  # header intact, data cut
     z = tmp_path / "t.zip"
     with zipfile.ZipFile(z, "w") as f:
@@ -201,14 +213,20 @@ def test_read_voc_zip_with_official_split(tmp_path):
     from netsight.datasets.detection import read_voc_zip
 
     z = tmp_path / "voc.zip"
-    xml = ("<annotation><filename>{n}.jpg</filename><size><width>100</width><height>50"
-           "</height></size>{objs}</annotation>")
-    obj = ("<object><name>{c}</name><bndbox><xmin>{a}</xmin><ymin>{b}</ymin><xmax>{c2}</xmax>"
-           "<ymax>{d}</ymax></bndbox></object>")
+    xml = (
+        "<annotation><filename>{n}.jpg</filename><size><width>100</width><height>50"
+        "</height></size>{objs}</annotation>"
+    )
+    obj = (
+        "<object><name>{c}</name><bndbox><xmin>{a}</xmin><ymin>{b}</ymin><xmax>{c2}</xmax>"
+        "<ymax>{d}</ymax></bndbox></object>"
+    )
     with zipfile.ZipFile(z, "w") as f:
         f.writestr("VOC2007/JPEGImages/000001.jpg", _jpeg(100, 50))
-        f.writestr("VOC2007/Annotations/000001.xml", xml.format(
-            n="000001", objs=obj.format(c="ship", a=11, b=6, c2=40, d=30)))
+        f.writestr(
+            "VOC2007/Annotations/000001.xml",
+            xml.format(n="000001", objs=obj.format(c="ship", a=11, b=6, c2=40, d=30)),
+        )
         f.writestr("VOC2007/JPEGImages/000002.jpg", _jpeg(100, 50))
         f.writestr("VOC2007/Annotations/000002.xml", xml.format(n="000002", objs=""))
         f.writestr("VOC2007/ImageSets/Main/test.txt", "000002\n")

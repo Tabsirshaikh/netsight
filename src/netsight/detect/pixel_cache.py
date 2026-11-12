@@ -109,8 +109,9 @@ def _lower_priority() -> None:
         import ctypes
 
         below_normal = 0x00004000
-        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(),
-                                                below_normal)
+        ctypes.windll.kernel32.SetPriorityClass(
+            ctypes.windll.kernel32.GetCurrentProcess(), below_normal
+        )
     else:
         import os
 
@@ -123,8 +124,9 @@ def main() -> int:
 
     _lower_priority()
     splits = build_splits(data_dir())
-    samples = splits["train"] + [s for part in ("val", "test")
-                                 for v in splits[part].values() for s in v]
+    samples = splits["train"] + [
+        s for part in ("val", "test") for v in splits[part].values() for s in v
+    ]
     stats = build_pixel_cache(samples, data_dir() / "cache" / "pixels")
     print(json.dumps({"images": len(samples), **stats}))
     return 0

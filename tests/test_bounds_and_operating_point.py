@@ -115,9 +115,7 @@ def test_unknown_outcomes_excluded_and_counted():
 
 def test_survey_without_contacts_still_adds_area():
     scores, real, surveys, area = _hand_case()
-    op = select_operating_point(
-        scores, real, surveys, {**area, "C": 10.0}, budget_fa_per_km2=0.5
-    )
+    op = select_operating_point(scores, real, surveys, {**area, "C": 10.0}, budget_fa_per_km2=0.5)
     assert op.area_km2 == 20.0 and op.n_surveys == 3
 
 

@@ -72,8 +72,12 @@ def test_office_overrides_field_deletion(items):
 
 @pytest.mark.parametrize(
     ("survey", "name"),
-    [("H12357", "AWOIS 3157"), ("H12357", "AWOIS 6922"), ("H12417", "AWOIS 11825"),
-     ("H12408", "AWOIS#14999")],
+    [
+        ("H12357", "AWOIS 3157"),
+        ("H12357", "AWOIS 6922"),
+        ("H12417", "AWOIS 11825"),
+        ("H12408", "AWOIS#14999"),
+    ],
 )
 def test_not_found_items_are_disproved(items, survey, name):
     it = _one(items, survey, name)
@@ -168,31 +172,71 @@ def test_write_features_csv(tmp_path, items):
     ("office", "rec", "remarks", "s57", "expected", "real"),
     [
         # H12357 1.17: an object is likely there; "disprove" is negated
-        ("Concur", "Retain Pile",
-         "Review of data indicates an object at this location. Shadow analysis indicates 0.6m "
-         "height off the bottom. Survey data is inadequate to disprove this item.",
-         None, "inconclusive", None),
+        (
+            "Concur",
+            "Retain Pile",
+            "Review of data indicates an object at this location. Shadow analysis indicates 0.6m "
+            "height off the bottom. Survey data is inadequate to disprove this item.",
+            None,
+            "inconclusive",
+            None,
+        ),
         # H12414 1.2
-        ("SAR: AWOIS 11824 search area was incomplete. Charted feature is not considered as "
-         "disproved although no evidence of shellfish racks were observed.",
-         "Retain as charted.", "", "MARCUL", "inconclusive", None),
+        (
+            "SAR: AWOIS 11824 search area was incomplete. Charted feature is not considered as "
+            "disproved although no evidence of shellfish racks were observed.",
+            "Retain as charted.",
+            "",
+            "MARCUL",
+            "inconclusive",
+            None,
+        ),
         # H12411 1.4: office decides before the field remark's "no evidence of an obstruction"
-        ("SAR: Rock verified with object detection multibeam.", "Chart rock.",
-         "Rock was found, but no evidence of an obstruction was found.", "UWTROC",
-         "verified", True),
+        (
+            "SAR: Rock verified with object detection multibeam.",
+            "Chart rock.",
+            "Rock was found, but no evidence of an obstruction was found.",
+            "UWTROC",
+            "verified",
+            True,
+        ),
         # H12357 1.16
-        ("Concur. Delete submeged pile.", "Recommend removal of Awois #3164.",
-         "Multiple rock contacts seen in radius, but no significant contact detected within "
-         "AWOIS radius in SSS data.", None, "disproved", False),
+        (
+            "Concur. Delete submeged pile.",
+            "Recommend removal of Awois #3164.",
+            "Multiple rock contacts seen in radius, but no significant contact detected within "
+            "AWOIS radius in SSS data.",
+            None,
+            "disproved",
+            False,
+        ),
         # H12315 1.7
-        ("Confirm field recommendation, feature Wreck is verified as not present by 200% SSS.",
-         "Delete disproved Wreck PA", "", "$CSYMB", "disproved", False),
+        (
+            "Confirm field recommendation, feature Wreck is verified as not present by 200% SSS.",
+            "Delete disproved Wreck PA",
+            "",
+            "$CSYMB",
+            "disproved",
+            False,
+        ),
         # H12408 2.6: a mooring buoy is a man-made object, not seabed
-        ("Retain charted mooring buoy.", "Retain mooring buoy", "US Navy mooring buoy",
-         "MORFAC", "retained_unverified", None),
+        (
+            "Retain charted mooring buoy.",
+            "Retain mooring buoy",
+            "US Navy mooring buoy",
+            "MORFAC",
+            "retained_unverified",
+            None,
+        ),
         # H12348 3.1
-        ("", "Reposition AWOIS 54051 as surveyed.", "AWOIS 54051. approx ext MLLW", "$CSYMB",
-         "verified", True),
+        (
+            "",
+            "Reposition AWOIS 54051 as surveyed.",
+            "AWOIS 54051. approx ext MLLW",
+            "$CSYMB",
+            "verified",
+            True,
+        ),
         # a bare deletion without stated evidence is not proof of absence
         ("Concur", "Delete wreck.", "", None, "deleted", None),
     ],
@@ -217,7 +261,7 @@ def test_found_seabed_feature_is_still_seabed():
 def test_position_accepts_typographic_minute_marks(minute_mark):
     m = minute_mark
     page = (
-        f"1.1)  DTON 1\nSurvey Position:  30° 09{m} 14.9\" N, 085° 40{m} 08.2\" W\n"
+        f'1.1)  DTON 1\nSurvey Position:  30° 09{m} 14.9" N, 085° 40{m} 08.2" W\n'
         "Least Depth:  3.42 m\nRemarks:\nRock found by MBES.\n"
     )
     (item,) = parse_feature_items([page], "H3")
@@ -229,19 +273,44 @@ def test_position_accepts_typographic_minute_marks(minute_mark):
     ("office", "rec", "remarks", "s57", "expected", "real"),
     [
         # H12890 1.2: search incomplete, item retained
-        ("", "", "No objects were found within 100 meters of the charted position in the survey "
-         "coverage. However; the entire search area was not covered due to water depth; "
-         "therefore retain AWOIS 1577 position as charted.", "WRECKS", "inconclusive", None),
+        (
+            "",
+            "",
+            "No objects were found within 100 meters of the charted position in the survey "
+            "coverage. However; the entire search area was not covered due to water depth; "
+            "therefore retain AWOIS 1577 position as charted.",
+            "WRECKS",
+            "inconclusive",
+            None,
+        ),
         # H12800 1.2: the cable is real, only the buoy was missing
-        ("", "Chart mooring cable", "Mooring cable line, submerged. Buoy not observed.",
-         "CBLSUB", "verified", True),
+        (
+            "",
+            "Chart mooring cable",
+            "Mooring cable line, submerged. Buoy not observed.",
+            "CBLSUB",
+            "verified",
+            True,
+        ),
         # history alone must not decide: "OBSTR. NOT DISPROVED" is a 1960s survey
-        ("", "", "History 03636 HISTORY H8526/60--OPR-410; OBSTR. NOT DISPROVED AFTER SLIGHT "
-         "REDUCTION IN LINE SPACING CARRIED FORWARD. CRANES/invreq: Type: OBSTRUCTION",
-         "CRANES", "unknown", None),
+        (
+            "",
+            "",
+            "History 03636 HISTORY H8526/60--OPR-410; OBSTR. NOT DISPROVED AFTER SLIGHT "
+            "REDUCTION IN LINE SPACING CARRIED FORWARD. CRANES/invreq: Type: OBSTRUCTION",
+            "CRANES",
+            "unknown",
+            None,
+        ),
         # H12884 1.1: charted as a sounding, but described as a feature on the seafloor
-        ("", "Hydrographer recommends charting feature", "SOUNDG/remrks: Feature on seafloor",
-         "SOUNDG", "unknown", None),
+        (
+            "",
+            "Hydrographer recommends charting feature",
+            "SOUNDG/remrks: Feature on seafloor",
+            "SOUNDG",
+            "unknown",
+            None,
+        ),
     ],
 )
 def test_classify_feature_second_spot_check(office, rec, remarks, s57, expected, real):
@@ -268,18 +337,34 @@ def test_history_mention_of_diver_is_not_physical_verification():
     ("remarks", "rec", "expected", "real"),
     [
         # H12656 1.2: a migrating sand bar is seabed, even though soundings were found
-        ("SOUNDG/remrks: Charted Dixey Bar has migrated along the western and southern extents. "
-         "Soundings around 30 12 02.63N were 10 to 18 feet shoaler than charted.",
-         "Chart soundings", "reclassified_seabed", False),
+        (
+            "SOUNDG/remrks: Charted Dixey Bar has migrated along the western and southern extents. "
+            "Soundings around 30 12 02.63N were 10 to 18 feet shoaler than charted.",
+            "Chart soundings",
+            "reclassified_seabed",
+            False,
+        ),
         # H12572 2.3: a found 'feature' charted as a depth is ambiguous
-        ("SOUNDG/remrks: Found feature using object detection level MBES and 200% SSS.",
-         "Retain", "unknown", None),
+        (
+            "SOUNDG/remrks: Found feature using object detection level MBES and 200% SSS.",
+            "Retain",
+            "unknown",
+            None,
+        ),
         # a rock charted as a sounding is a real object
-        ("SOUNDG/remrks: Rock found with object detection MBES.", "Chart rock as a sounding.",
-         "verified", True),
+        (
+            "SOUNDG/remrks: Rock found with object detection MBES.",
+            "Chart rock as a sounding.",
+            "verified",
+            True,
+        ),
         # H12572 2.1: disproved stays disproved
-        ("SOUNDG/remrks: Did not find feature using klein 5000 Side Scan sonar.", "",
-         "disproved", False),
+        (
+            "SOUNDG/remrks: Did not find feature using klein 5000 Side Scan sonar.",
+            "",
+            "disproved",
+            False,
+        ),
     ],
 )
 def test_charted_soundings(remarks, rec, expected, real):

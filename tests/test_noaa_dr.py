@@ -47,8 +47,16 @@ def test_classify_disposition(text, expected):
 def test_parses_all_table_rows_from_real_report_excerpt(contacts):
     ids = [r.contact_id for r in contacts]
     for expected in [
-        "227-010243S", "226-174911S", "225-105617P", "225-033037P", "227-034244S",
-        "227-085156S", "231-184726S", "224-150725P", "228-233126P", "224-043515P",
+        "227-010243S",
+        "226-174911S",
+        "225-105617P",
+        "225-033037P",
+        "227-034244S",
+        "227-085156S",
+        "231-184726S",
+        "224-150725P",
+        "228-233126P",
+        "224-043515P",
         "227-034233S",
     ]:
         assert expected in ids

@@ -105,19 +105,28 @@ def read_yolo_zip(
                     swapped = f"/{label_name}".replace("/images/", "/labels/", 1)[1:]
                     label_name = swapped if swapped in members else label_name
                 text = z.read(label_name).decode() if label_name in members else ""
-                rows = np.array(text.split(), dtype=float).reshape(-1, 5) if text.strip() else (
-                    np.zeros((0, 5)))
+                rows = (
+                    np.array(text.split(), dtype=float).reshape(-1, 5)
+                    if text.strip()
+                    else (np.zeros((0, 5)))
+                )
                 if len(rows) and (rows[:, 0].max() >= len(class_names) or rows[:, 0].min() < 0):
                     raise ValueError(f"{zp.name}:{label_name}: class index outside {class_names}")
                 xc, yc, bw, bh = rows[:, 1] * w, rows[:, 2] * h, rows[:, 3] * w, rows[:, 4] * h
                 boxes = np.column_stack([xc - bw / 2, yc - bh / 2, xc + bw / 2, yc + bh / 2])
                 stem = PurePosixPath(name).name
-                samples.append(DetectionSample(
-                    dataset_id=dataset_id, zip_path=str(zp), member=name, width=w, height=h,
-                    boxes=boxes.reshape(-1, 4),
-                    labels=[class_names[int(c)] for c in rows[:, 0]],
-                    group=group_fn(stem) if group_fn else zp.stem,
-                ))
+                samples.append(
+                    DetectionSample(
+                        dataset_id=dataset_id,
+                        zip_path=str(zp),
+                        member=name,
+                        width=w,
+                        height=h,
+                        boxes=boxes.reshape(-1, 4),
+                        labels=[class_names[int(c)] for c in rows[:, 0]],
+                        group=group_fn(stem) if group_fn else zp.stem,
+                    )
+                )
     return samples
 
 
@@ -147,12 +156,19 @@ def read_ghostvision_zip(zip_path: str | Path, *, dataset_id: str = "ghostvision
                 member = f"{folder}/{row['file_name']}"
                 w, h = image_size(z.read(member))
                 objs = row.get("objects") or {}
-                samples.append(DetectionSample(
-                    dataset_id=dataset_id, zip_path=str(zip_path), member=member,
-                    width=w, height=h, boxes=_xywh_to_xyxy(objs.get("bbox") or []),
-                    labels=list(objs.get("category") or []),
-                    group=ghostvision_group(row["file_name"]), source_split=split,
-                ))
+                samples.append(
+                    DetectionSample(
+                        dataset_id=dataset_id,
+                        zip_path=str(zip_path),
+                        member=member,
+                        width=w,
+                        height=h,
+                        boxes=_xywh_to_xyxy(objs.get("bbox") or []),
+                        labels=list(objs.get("category") or []),
+                        group=ghostvision_group(row["file_name"]),
+                        source_split=split,
+                    )
+                )
     return samples
 
 
@@ -195,16 +211,23 @@ def read_coco_zip(
                     continue
                 w, h = image_size(z.read(member))
                 if (w, h) != (im["width"], im["height"]):
-                    raise ValueError(f"{member}: header {w}x{h} != json {im['width']}x"
-                                     f"{im['height']}")
+                    raise ValueError(
+                        f"{member}: header {w}x{h} != json {im['width']}x{im['height']}"
+                    )
                 anns = per_image.get(im["id"], [])
-                samples.append(DetectionSample(
-                    dataset_id=dataset_id, zip_path=str(zip_path), member=member, width=w,
-                    height=h, boxes=_xywh_to_xyxy([a["bbox"] for a in anns]),
-                    labels=[cats[a["category_id"]] for a in anns],
-                    group=group_fn(im["file_name"]) if group_fn else zip_path.stem,
-                    extra={"band": band} if band else {},
-                ))
+                samples.append(
+                    DetectionSample(
+                        dataset_id=dataset_id,
+                        zip_path=str(zip_path),
+                        member=member,
+                        width=w,
+                        height=h,
+                        boxes=_xywh_to_xyxy([a["bbox"] for a in anns]),
+                        labels=[cats[a["category_id"]] for a in anns],
+                        group=group_fn(im["file_name"]) if group_fn else zip_path.stem,
+                        extra={"band": band} if band else {},
+                    )
+                )
     return samples
 
 
@@ -236,15 +259,19 @@ def ordered_group_split(
     """
     groups = sorted({s.group for s in samples}, key=key)
     if n_val + n_test + 2 * gap >= len(groups):
-        raise ValueError(f"{len(groups)} groups are too few for {n_val} val + {n_test} test "
-                         f"+ {2 * gap} gap groups and some training")
-    test = set(groups[len(groups) - n_test:])
+        raise ValueError(
+            f"{len(groups)} groups are too few for {n_val} val + {n_test} test "
+            f"+ {2 * gap} gap groups and some training"
+        )
+    test = set(groups[len(groups) - n_test :])
     val_end = len(groups) - n_test - gap
-    val = set(groups[val_end - n_val:val_end])
+    val = set(groups[val_end - n_val : val_end])
     train = set(groups[: val_end - n_val - gap])
-    return {"train": [s for s in samples if s.group in train],
-            "val": [s for s in samples if s.group in val],
-            "test": [s for s in samples if s.group in test]}
+    return {
+        "train": [s for s in samples if s.group in train],
+        "val": [s for s in samples if s.group in val],
+        "test": [s for s in samples if s.group in test],
+    }
 
 
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -335,9 +362,17 @@ def read_voc_zip(zip_path: str | Path, dataset_id: str) -> list[DetectionSample]
                 x0, y0, x1, y1 = (float(bb.findtext(k)) for k in ("xmin", "ymin", "xmax", "ymax"))
                 boxes.append([x0 - 1, y0 - 1, x1, y1])
                 labels.append(obj.findtext("name"))
-            samples.append(DetectionSample(
-                dataset_id=dataset_id, zip_path=str(zip_path), member=member, width=w, height=h,
-                boxes=np.asarray(boxes, dtype=float).reshape(-1, 4), labels=labels,
-                group=split_of.get(stem, "unsplit"), source_split=split_of.get(stem),
-            ))
+            samples.append(
+                DetectionSample(
+                    dataset_id=dataset_id,
+                    zip_path=str(zip_path),
+                    member=member,
+                    width=w,
+                    height=h,
+                    boxes=np.asarray(boxes, dtype=float).reshape(-1, 4),
+                    labels=labels,
+                    group=split_of.get(stem, "unsplit"),
+                    source_split=split_of.get(stem),
+                )
+            )
     return samples

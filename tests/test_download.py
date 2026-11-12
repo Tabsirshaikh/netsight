@@ -116,8 +116,9 @@ def test_download_resumes_after_dropped_connections(server, tmp_path, mode):
 def test_download_keeps_partial_when_retries_run_out(server, tmp_path):
     RangeHandler.faults = {"/data.bin": [10, "short"]}
     with pytest.raises(DownloadError, match="incomplete"):
-        download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), attempts=2,
-                 retry_wait=0)
+        download(
+            f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), attempts=2, retry_wait=0
+        )
     part = tmp_path / "d.bin.part"
     assert part.exists() and 0 < part.stat().st_size < len(PAYLOAD)
     assert part.read_bytes() == PAYLOAD[: part.stat().st_size]  # resumable, not corrupt
@@ -184,8 +185,14 @@ def small_segments(monkeypatch):
 
 def test_segmented_download_assembles_the_file(server, tmp_path):
     md5 = hashlib.md5(PAYLOAD).hexdigest()
-    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), md5=md5,
-                   connections=4, retry_wait=0)
+    out = download(
+        f"{server}/data.bin",
+        tmp_path / "d.bin",
+        size=len(PAYLOAD),
+        md5=md5,
+        connections=4,
+        retry_wait=0,
+    )
     assert out.read_bytes() == PAYLOAD
     assert RangeHandler.range_requests >= 4
     assert not list(tmp_path.glob("d.bin.part*"))  # segments cleaned up
@@ -193,22 +200,30 @@ def test_segmented_download_assembles_the_file(server, tmp_path):
 
 def test_segmented_download_continues_an_existing_partial(server, tmp_path):
     (tmp_path / "d.bin.part").write_bytes(PAYLOAD[:30_000])
-    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
-                   connections=3, retry_wait=0)
+    out = download(
+        f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), connections=3, retry_wait=0
+    )
     assert out.read_bytes() == PAYLOAD
 
 
 def test_segmented_download_resumes_a_dropped_segment(server, tmp_path):
     RangeHandler.faults = {"/data.bin": [3, "short"]}
-    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
-                   md5=hashlib.md5(PAYLOAD).hexdigest(), connections=4, retry_wait=0)
+    out = download(
+        f"{server}/data.bin",
+        tmp_path / "d.bin",
+        size=len(PAYLOAD),
+        md5=hashlib.md5(PAYLOAD).hexdigest(),
+        connections=4,
+        retry_wait=0,
+    )
     assert out.read_bytes() == PAYLOAD
 
 
 def test_segmented_download_falls_back_when_range_is_ignored(server, tmp_path):
     RangeHandler.no_range = {"/data.bin"}
-    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
-                   connections=4, retry_wait=0)
+    out = download(
+        f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD), connections=4, retry_wait=0
+    )
     assert out.read_bytes() == PAYLOAD
 
 
@@ -220,7 +235,13 @@ def test_segmented_download_needs_a_known_size(server, tmp_path):
 def test_segments_keep_going_while_each_attempt_makes_progress(server, tmp_path):
     # every request is cut short, but each one delivers new bytes: a slow, flaky link
     RangeHandler.faults = {"/data.bin": [40, "short"]}
-    out = download(f"{server}/data.bin", tmp_path / "d.bin", size=len(PAYLOAD),
-                   md5=hashlib.md5(PAYLOAD).hexdigest(), connections=2, attempts=3,
-                   retry_wait=0)
+    out = download(
+        f"{server}/data.bin",
+        tmp_path / "d.bin",
+        size=len(PAYLOAD),
+        md5=hashlib.md5(PAYLOAD).hexdigest(),
+        connections=2,
+        attempts=3,
+        retry_wait=0,
+    )
     assert out.read_bytes() == PAYLOAD

@@ -25,8 +25,9 @@ class ResearchModelError(RuntimeError):
 
 
 def _canonical(obj) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False)
+    return json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
 
 
 def build_training_manifest(
@@ -48,13 +49,15 @@ def build_training_manifest(
     for i in ids:
         e = entries[i]
         licence = str(e.get("licence", ""))
-        datasets.append({
-            "id": i,
-            "title": e.get("title", ""),
-            "licence": licence,
-            "tier": e["tier"],
-            "commercial_use": str(e.get("commercial_use", "")),
-        })
+        datasets.append(
+            {
+                "id": i,
+                "title": e.get("title", ""),
+                "licence": licence,
+                "tier": e["tier"],
+                "commercial_use": str(e.get("commercial_use", "")),
+            }
+        )
         if e["tier"] != "commercial":
             blocking.append(i)
         if not licence.upper().startswith(NO_NOTICE_LICENCES):
@@ -83,13 +86,16 @@ def write_manifest(manifest: dict, out_dir: str | Path, *, ledger: Ledger | None
     path = out / "manifest.json"
     path.write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
     if ledger is not None:
-        ledger.append("model", {
-            "model_id": saved["model_id"],
-            "model_class": saved["model_class"],
-            "datasets": [d["id"] for d in saved["datasets"]],
-            "blocking_datasets": saved["blocking_datasets"],
-            "manifest_sha256": digest,
-        })
+        ledger.append(
+            "model",
+            {
+                "model_id": saved["model_id"],
+                "model_class": saved["model_class"],
+                "datasets": [d["id"] for d in saved["datasets"]],
+                "blocking_datasets": saved["blocking_datasets"],
+                "manifest_sha256": digest,
+            },
+        )
     return path
 
 

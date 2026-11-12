@@ -15,13 +15,15 @@ TILE = Tile(0, 0, 100, 100, 0)
 
 
 def test_keep_boxes_rules():
-    boxes = np.array([
-        [10, 10, 30, 30],     # inside: kept
-        [90, 10, 110, 30],    # half inside (visible 0.5): kept
-        [95, 10, 115, 30],    # quarter inside, small visible part: cut, not kept
-        [60, 0, 160, 80],     # 40% inside but visible part 40x80 px >= 32: kept
-        [200, 200, 210, 210], # outside: ignored
-    ])
+    boxes = np.array(
+        [
+            [10, 10, 30, 30],  # inside: kept
+            [90, 10, 110, 30],  # half inside (visible 0.5): kept
+            [95, 10, 115, 30],  # quarter inside, small visible part: cut, not kept
+            [60, 0, 160, 80],  # 40% inside but visible part 40x80 px >= 32: kept
+            [200, 200, 210, 210],  # outside: ignored
+        ]
+    )
     local, kept, cut = keep_boxes(boxes, TILE)
     assert kept.tolist() == [0, 1, 3]
     assert cut.tolist() == [2]
@@ -50,15 +52,17 @@ def test_negative_sampling_ratio_and_determinism():
 
 
 def test_images_without_objects_give_negatives_only():
-    tiles = build_train_tiles([_sample(100, 100, [])], 100, neg_ratio=1.0,
-                              rng=np.random.default_rng(0), min_negatives=1)
+    tiles = build_train_tiles(
+        [_sample(100, 100, [])], 100, neg_ratio=1.0, rng=np.random.default_rng(0), min_negatives=1
+    )
     assert len(tiles) == 1 and tiles[0].boxes.shape == (0, 4)
 
 
 def test_max_tiles_keeps_the_positive_share():
     samples = [_sample(400, 100, [[10, 10, 30, 30]], i) for i in range(20)]
-    tiles = build_train_tiles(samples, 100, overlap=0.0, neg_ratio=1.0, max_tiles=10,
-                              rng=np.random.default_rng(2))
+    tiles = build_train_tiles(
+        samples, 100, overlap=0.0, neg_ratio=1.0, max_tiles=10, rng=np.random.default_rng(2)
+    )
     assert len(tiles) == 10
     assert sum(1 for t in tiles if len(t.boxes)) == 5
 
@@ -77,17 +81,28 @@ def test_bad_arguments():
 
 
 def _ds(dataset_id, n, w=400):
-    return [DetectionSample(dataset_id, "z.zip", f"{dataset_id}{i}.jpg", w, 100,
-                            np.array([[10.0, 10.0, 40.0, 40.0]]), ["o"], "g")
-            for i in range(n)]
+    return [
+        DetectionSample(
+            dataset_id,
+            "z.zip",
+            f"{dataset_id}{i}.jpg",
+            w,
+            100,
+            np.array([[10.0, 10.0, 40.0, 40.0]]),
+            ["o"],
+            "g",
+        )
+        for i in range(n)
+    ]
 
 
 def test_balanced_tiles_gives_small_datasets_a_minimum_share():
     from netsight.detect.training_tiles import balanced_tiles
 
     samples = _ds("big", 200) + _ds("small", 10)
-    tiles = balanced_tiles(samples, 100, neg_ratio=0.0, max_tiles=400, seed=0, min_share=0.15,
-                           max_repeat=4)
+    tiles = balanced_tiles(
+        samples, 100, neg_ratio=0.0, max_tiles=400, seed=0, min_share=0.15, max_repeat=4
+    )
     by = {"big": 0, "small": 0}
     for t in tiles:
         by[samples[t.sample_index].dataset_id] += 1
@@ -101,8 +116,9 @@ def test_balanced_tiles_repeat_is_capped():
     from netsight.detect.training_tiles import balanced_tiles
 
     samples = _ds("big", 400) + _ds("tiny", 2)
-    tiles = balanced_tiles(samples, 100, neg_ratio=0.0, max_tiles=800, seed=0, min_share=0.5,
-                           max_repeat=3)
+    tiles = balanced_tiles(
+        samples, 100, neg_ratio=0.0, max_tiles=800, seed=0, min_share=0.5, max_repeat=3
+    )
     assert sum(1 for t in tiles if samples[t.sample_index].dataset_id == "tiny") == 6
 
 
@@ -112,5 +128,5 @@ def test_early_stopper_waits_for_patience():
     stop = EarlyStopper(patience=2)
     assert stop.update(0.30) is False and stop.best == 0.30
     assert stop.update(0.35) is False and stop.best == 0.35  # improvement resets the count
-    assert stop.update(0.34) is False                        # 1 without improvement
-    assert stop.update(0.33) is True                         # 2 -> stop
+    assert stop.update(0.34) is False  # 1 without improvement
+    assert stop.update(0.33) is True  # 2 -> stop

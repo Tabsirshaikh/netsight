@@ -32,11 +32,19 @@ FOOTER = re.compile(
 )
 
 REMARK_STOPS = (
-    "Feature Correlation", "Hydrographer Recommendations", "S-57 Data", "Office Notes",
-    "Cartographically", "Geo object",
+    "Feature Correlation",
+    "Hydrographer Recommendations",
+    "S-57 Data",
+    "Office Notes",
+    "Cartographically",
+    "Geo object",
 )
 RECOMMENDATION_STOPS = (
-    "Cartographically", "S-57 Data", "Geo object", "Office Notes", "Feature Correlation",
+    "Cartographically",
+    "S-57 Data",
+    "Geo object",
+    "Office Notes",
+    "Feature Correlation",
 )
 OFFICE_STOPS = ("Hydrographer Recommendations", "S-57 Data", "Geo object", "Feature Correlation")
 
@@ -51,9 +59,7 @@ INCONCLUSIVE = re.compile(
     re.I,
 )
 # Old reports quoted inside an item ("History ..."): not evidence from this survey.
-HISTORY_BLOCK = re.compile(
-    r"^\s*history\b.*?(?=\$?[A-Z]{5,6}/(?:invreq|remrks):|\Z)", re.I | re.S
-)
+HISTORY_BLOCK = re.compile(r"^\s*history\b.*?(?=\$?[A-Z]{5,6}/(?:invreq|remrks):|\Z)", re.I | re.S)
 SENTENCE = re.compile(r"(?<=[.;])\s+")
 # Charted soundings (S-57 SOUNDG) are usually seabed relief. In hydrographic reports the word
 # "feature" means anything charted, sand bars included, so it alone proves nothing.
@@ -297,9 +303,7 @@ def parse_feature_items(pages: list[str], survey_id: str) -> list[FeatureItem]:
             continue
         key = (round(item.lat, 5), round(item.lon, 5), item.least_depth_m)
         old = items.get(key)
-        if old is None or (
-            old.is_real_object is None and item.is_real_object is not None
-        ):
+        if old is None or (old.is_real_object is None and item.is_real_object is not None):
             items[key] = item
     return list(items.values())
 
