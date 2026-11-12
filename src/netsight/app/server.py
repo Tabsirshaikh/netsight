@@ -321,6 +321,8 @@ def write_evidence(context: dict[str, Any], out_dir: Path, ledger_path: Path) ->
         calibration=context["calibration"],
         created=context["created"],
         inputs=context["inputs"],
+        completeness=context.get("completeness"),
+        verification_plan=context.get("verification_plan"),
     )
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     write_pack(pack, out_dir, ledger=Ledger(ledger_path))
@@ -611,6 +613,14 @@ def analyze_sync(
         )
         if completeness
         else None
+    )
+    if completeness_result is not None and completeness_result.get("available"):
+        context["completeness"] = json_safe(completeness_result)
+    from netsight.app.geo_outputs import export_records
+    from netsight.export.plan import verification_plan
+
+    context["verification_plan"] = json_safe(
+        verification_plan(export_records(contacts, survey_id, claim.level))
     )
     out_dir = runtime.output_dir / survey_id
     out_dir.mkdir(parents=True, exist_ok=False)

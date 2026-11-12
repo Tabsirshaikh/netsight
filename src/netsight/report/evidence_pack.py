@@ -137,8 +137,14 @@ def build_pack(
     calibration: dict,
     created: str,
     inputs: Mapping[str, str],
+    completeness: Mapping | None = None,
+    verification_plan: Mapping | None = None,
 ) -> dict:
-    """Build a detached, JSON-compatible pack and its canonical digest."""
+    """Build a detached, JSON-compatible pack and its canonical digest.
+
+    ``completeness`` (injected-target Pd summary) and ``verification_plan`` are optional
+    sections; a withdrawn claim withholds the completeness Pd as it withholds probabilities.
+    """
     if claim.level not in {"calibrated", "indicative", "withdrawn"}:
         raise ValueError(f"Unknown claim level: {claim.level}")
     if operating.unit not in {"image", "km2"}:
@@ -204,6 +210,16 @@ def build_pack(
         "contacts": contact_rows,
         "summary": _summary(len(contact_rows), claim, operating),
     }
+    if completeness is not None:
+        section = {k: v for k, v in completeness.items() if k != "cells"}
+        if claim.level == "withdrawn":
+            section["pd"] = None
+            section["pd_lower90"] = None
+        pack["completeness"] = section
+    if verification_plan is not None:
+        plan = dict(verification_plan)
+        plan["entries"] = list(plan.get("entries", []))[:10]
+        pack["verification_plan"] = plan
     if manifest["model_class"] != "product":
         # A top-level banner makes the research label visible outside model metadata.
         pack = {"banner": manifest["label"], **pack}
@@ -255,6 +271,37 @@ def _evidence_text(evidence: Mapping[str, EvidenceValue]) -> str:
                 displayed = str(value)
             items.append(f"{key}={displayed}")
     return "; ".join(items) or "not supplied"
+
+
+def _extras_html(pack: dict) -> str:
+    """Optional completeness and verification-plan sections."""
+    parts = []
+    c = pack.get("completeness")
+    if c and c.get("available", True):
+        rows = [
+            ["Pd (injected targets found)", c.get("pd")],
+            ["Pd lower bound, 90%", c.get("pd_lower90")],
+            ["Trials (found / injected)", f"{c.get('detected')} / {c.get('trials')}"],
+            ["Claim level", c.get("claim_level")],
+            ["Method", c.get("method")],
+        ]
+        parts.append(
+            "<h2>Search completeness</h2>"
+            f"<p>{_text(c.get('caveat', ''))}</p>{_table(['Field', 'Value'], rows)}"
+        )
+    plan = pack.get("verification_plan")
+    if plan:
+        rows = [
+            [e["rank"], e["contact_id"], e["p_real"], e["cumulative_expected_real"]]
+            for e in plan.get("entries", [])
+        ]
+        parts.append(
+            "<h2>Verification plan (top 10)</h2>"
+            f"<p>{_text(plan.get('note', ''))} Expected real finds, all contacts: "
+            f"{_text(plan.get('expected_real_total'))}.</p>"
+            + _table(["Rank", "Contact", "P(real)", "Cumulative expected real"], rows)
+        )
+    return "".join(parts)
 
 
 def render_html(pack: dict) -> str:
@@ -334,7 +381,7 @@ def render_html(pack: dict) -> str:
         f"<h2>Calibration</h2>{calibration}"
         "<h2>Contacts</h2><p>Soft evidence is descriptive only; it does not "
         "drop or down-weight contacts.</p>"
-        f"{contacts}<h2>Inputs</h2>{inputs}"
+        f"{contacts}{_extras_html(pack)}<h2>Inputs</h2>{inputs}"
         f"<footer>Pack SHA-256: {_text(pack['pack_sha256'])}</footer>"
         "</main></body></html>\n"
     )

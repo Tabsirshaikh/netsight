@@ -222,3 +222,49 @@ def test_no_recall_without_estimate(arguments: dict) -> None:
     arguments["operating"] = replace(arguments["operating"], recall_estimate=None, recall_ci=None)
     pack = build_pack(**arguments)
     assert any("none was supplied" in sentence for sentence in pack["summary"])
+
+
+def _extras() -> dict:
+    return {
+        "completeness": {
+            "available": True,
+            "pd": 0.61,
+            "pd_lower90": 0.52,
+            "trials": 54,
+            "detected": 33,
+            "claim_level": "calibrated",
+            "method": "transplant",
+            "caveat": "Reference objects only.",
+            "cells": [{"row": 0}],
+        },
+        "verification_plan": {
+            "entries": [
+                {
+                    "rank": i,
+                    "contact_id": f"c{i}",
+                    "p_real": 0.5,
+                    "cumulative_expected_real": 0.5 * i,
+                }
+                for i in range(1, 13)
+            ],
+            "expected_real_total": 6.0,
+            "note": "Sum of probabilities.",
+        },
+    }
+
+
+def test_completeness_and_plan_sections(arguments: dict) -> None:
+    pack = build_pack(**arguments, **_extras())
+    assert pack["completeness"]["pd"] == 0.61 and "cells" not in pack["completeness"]
+    assert len(pack["verification_plan"]["entries"]) == 10
+    html = render_html(pack)
+    assert "Search completeness" in html and "Verification plan" in html and "0.52" in html
+
+
+def test_withdrawn_withholds_completeness_pd(arguments: dict) -> None:
+    arguments["claim"] = ClaimDecision(
+        level="withdrawn", statement="Applicability withdrawn.", reasons=["Outside scope."]
+    )
+    pack = build_pack(**arguments, **_extras())
+    assert pack["completeness"]["pd"] is None and pack["completeness"]["pd_lower90"] is None
+    assert "0.61" not in render_html(pack)
