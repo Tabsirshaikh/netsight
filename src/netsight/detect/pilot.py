@@ -287,6 +287,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON from netsight.detect.pseudo_label: unlabelled survey images with model boxes",
     )
+    ap.add_argument(
+        "--label-overrides",
+        default=None,
+        help="JSON {zip_path|member: [[x0,y0,x1,y1], ...]}: cleaned training boxes",
+    )
     ap.add_argument("--datasets", default="mine,ghostvision", help="comma-separated")
     ap.add_argument("--model-id", default=None, help="name recorded in the model label")
     ap.add_argument("--workers", type=int, default=4, help="DataLoader worker processes")
@@ -312,6 +317,21 @@ def main(argv: list[str] | None = None) -> int:
     for part in ("val", "test"):
         splits[part] = {k: v for k, v in splits[part].items() if k.split("_")[0] in chosen}
     val = {k: subsample(v, args.val_images, rng) for k, v in splits["val"].items()}
+    if args.label_overrides:  # cleaned training labels (e.g. reviewer-added objects)
+        import dataclasses
+        import json as _json
+
+        over = _json.loads(Path(args.label_overrides).read_text("utf-8"))
+        changed = 0
+        for k, smp in enumerate(splits["train"]):
+            key = f"{smp.zip_path}|{smp.member}"
+            if key in over:
+                boxes = np.asarray(over[key], float).reshape(-1, 4)
+                splits["train"][k] = dataclasses.replace(
+                    smp, boxes=boxes, labels=["object"] * len(boxes)
+                )
+                changed += 1
+        print(f"label overrides applied to {changed} training images", flush=True)
     if args.pseudo:  # self-training: add pseudo-labelled survey images (no ground truth used)
         import dataclasses
         import json as _json

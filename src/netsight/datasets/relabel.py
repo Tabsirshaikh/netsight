@@ -37,8 +37,25 @@ def load_reviews(paths: Iterable[Path]) -> dict[int, dict]:
     return out
 
 
-def corrected(record: dict, original: np.ndarray) -> tuple[np.ndarray, np.ndarray, dict]:
-    """(gt boxes, ignore boxes, counts) for one reviewed image."""
+def corrected(
+    record: dict, original: np.ndarray, mode: str = "generous"
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """(gt boxes, ignore boxes, counts) for one reviewed image.
+
+    mode "generous": rules in the module docstring (reviewer additions become ground truth).
+    mode "conservative": every original label is kept as ground truth whatever the reviewer
+    said, and everything the reviewer added or doubted becomes an ignore region. Used as the main
+    result after a spot-check found the reviewer rejected 21-36% of expert mine labels that
+    looked real, and ~70% of its additions were clearly objects.
+    """
+    if mode == "conservative":
+        orig = np.asarray(original, float).reshape(-1, 4)
+        gen_gt, gen_ig, counts = corrected(record, original, "generous")
+        extra = [b for b in gen_gt if not (len(orig) and np.any(np.all(np.isclose(orig, b), 1)))]
+        ig = np.concatenate([np.asarray(extra, float).reshape(-1, 4), gen_ig])
+        if len(ig) and len(orig):
+            ig = ig[~np.any(np.all(np.isclose(ig[:, None, :], orig[None, :, :]), 2), 1)]
+        return orig, ig.reshape(-1, 4), counts
     cand = np.asarray(record["candidates"], float).reshape(-1, 4)
     verdicts = {c.get("id"): c for c in record["answer"].get("candidates", [])}
     gt, ignore = [], []

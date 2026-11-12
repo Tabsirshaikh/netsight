@@ -41,3 +41,10 @@ def test_evaluate_ignore_raises_ap_when_false_alarm_is_ignored():
     preds = [(np.array([[20, 20, 30, 30], [0, 0, 10, 10]], float), np.array([0.9, 0.5]))]
     assert evaluate(preds, gt) == pytest.approx(0.5)
     assert evaluate(preds, gt, [np.array([[20, 20, 30, 30]], float)]) == pytest.approx(1.0)
+
+
+def test_conservative_keeps_all_original_labels_and_ignores_additions():
+    orig = np.array([[0, 0, 10, 10], [20, 20, 30, 30]], float)
+    gt, ig, _ = corrected(_rec(), orig, "conservative")
+    assert gt.tolist() == orig.tolist()
+    assert sorted(ig.tolist()) == [[40, 40, 50, 50], [60, 60, 70, 70], [80, 80, 90, 90]]
