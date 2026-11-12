@@ -31,7 +31,16 @@ app = ["fastapi>=0.115", "uvicorn>=0.30", "python-multipart>=0.0.9"]
 netsight = "netsight.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    # Light packages the CPU test suite needs; torch tests skip when torch is absent.
+    "pillow>=10",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "onnxruntime>=1.20",
+]
 
 [build-system]
 requires = ["hatchling>=1.25"]
