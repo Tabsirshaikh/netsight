@@ -22,6 +22,11 @@ From the repository root, start the API:
 
     uv run python -m netsight.app.server --port 8000
 
+Offline CPU mode (no GPU, no network; general model from its ONNX export):
+
+    uv run python -m netsight.detect.onnx_export export <data>/runs/research_v0.4/model <data>/runs/onnx_v0.4/model.onnx
+    uv run python -m netsight.app.server --port 8000 --onnx <data>/runs/onnx_v0.4/model.onnx
+
 In another terminal:
 
     cd web

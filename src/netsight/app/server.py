@@ -17,6 +17,7 @@ import io
 import json
 import logging
 import math
+import os
 import re
 import shutil
 import time
@@ -141,6 +142,34 @@ def png_bytes(image: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
+def onnx_predictor(onnx_path: Path, model: Any, fallback: Callable[..., Any]) -> Callable:
+    """Predictor that runs ``model``'s ONNX export on the CPU (offline mode), with the same
+    horizontal-flip TTA and box merge as the PyTorch path; other models use ``fallback``."""
+    from netsight.detect.onnx_export import OnnxDetector, predict_image_onnx
+    from netsight.detect.tta import weighted_box_fusion
+
+    detector = OnnxDetector(onnx_path)
+
+    def predict(m: Any, processor: Any, image: np.ndarray, **kw: Any):
+        if m is not model:
+            return fallback(m, processor, image, **kw)
+        b, s = predict_image_onnx(detector, image, tile_px=kw.get("tile_px", 640))
+        if kw.get("views", "hflip") == "none":
+            return b, s
+        w = image.shape[1]
+        bf, sf = predict_image_onnx(
+            detector, np.ascontiguousarray(image[:, ::-1]), tile_px=kw.get("tile_px", 640)
+        )
+        bf = np.asarray(bf, float).reshape(-1, 4).copy()
+        bf[:, [0, 2]] = w - bf[:, [2, 0]]
+        boxes, scores = weighted_box_fusion(
+            [np.asarray(b, float).reshape(-1, 4), bf], [np.asarray(s, float), np.asarray(sf, float)]
+        )
+        return boxes[:100], np.clip(scores[:100], 0.0, 1.0)
+
+    return predict
+
+
 def default_runtime_factory() -> Runtime:
     import torch
     from transformers import AutoImageProcessor, DFineForObjectDetection
@@ -197,6 +226,10 @@ def default_runtime_factory() -> Runtime:
                 )
             )
     targets = build_target_library(all_splits["val"], pixels)
+    predictor: Callable[..., Any] = predict_image_tta
+    onnx = os.environ.get("NETSIGHT_ONNX")
+    if onnx:
+        predictor = onnx_predictor(Path(onnx), models["general"].model, predict_image_tta)
     return Runtime(
         targets=targets,
         device=device,
@@ -206,7 +239,7 @@ def default_runtime_factory() -> Runtime:
         dump=dump,
         output_dir=root / "runs" / "dashboard_packs",
         ledger_path=root / "runs" / "dashboard_ledger.jsonl",
-        predictor=predict_image_tta,
+        predictor=predictor,
         geometry=geometry_claim,
         recall=validation_recall,
         threshold=count_threshold,
@@ -895,7 +928,15 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--onnx",
+        type=Path,
+        default=None,
+        help="offline CPU mode: run the general model from this ONNX export",
+    )
     args = parser.parse_args()
+    if args.onnx is not None:
+        os.environ["NETSIGHT_ONNX"] = str(args.onnx)
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 
