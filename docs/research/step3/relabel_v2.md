@@ -37,10 +37,10 @@ Two label versions are scored (rules fixed before scoring):
 | Test set | v0.4 original labels | v0.4 conservative v2 | v0.4 generous v2 | best model, conservative |
 |---|---|---|---|---|
 | mine | 0.223 | **0.337** | 0.570 | v0.4 |
-| GhostVision | 0.361 | **0.551** | 0.712 | v0.4 (GhostVision specialist 0.542) |
-| Contact (other sensor) | 0.256 | **0.386** | 0.560 | GhostVision specialist 0.493 |
+| GhostVision | 0.361 | **0.557** | 0.713 | v0.4 (GhostVision specialist 0.547) |
+| Contact (other sensor) | 0.256 | **0.390** | 0.564 | GhostVision specialist 0.496 |
 
-(GhostVision/Contact numbers before the sol re-check; mine includes it.)
+(All sets include the sol re-check.)
 
 1. The published test labels miss many real objects: v0.4 is about 50% better than reported on
    every set, even under the conservative rule.
