@@ -373,6 +373,7 @@ DOWNLOADS = {
     "completeness.json": "application/json",
     "audit.json": "application/json",
     "completeness_multipass.tif": "image/tiff",
+    "association.json": "application/json",
 }
 AUDIT_FLOOR = 0.1  # candidates eligible for the random contact audit (calibration domain)
 MIN_AUDIT_DECISIONS = 20
@@ -545,6 +546,58 @@ def not_searched_png(mask: np.ndarray) -> bytes:
     buffer = io.BytesIO()
     Image.fromarray(rgba, "RGBA").save(buffer, "PNG")
     return buffer.getvalue()
+
+
+def associate_survey(
+    contacts: list[dict[str, Any]],
+    images: list[tuple[str, np.ndarray, bytes]],
+    georefs: list[Any],
+) -> dict[str, Any] | None:
+    """Persistent object IDs across georeferenced passes (plan 8.5; one image = one pass).
+
+    Hungarian assignment per pass on Mahalanobis d2 with the georeference covariance, plus a
+    soft size cost (box size x pixel size). The detector has one class, so no class cost.
+    """
+    from dataclasses import asdict
+
+    from netsight.geo.associate import Contact as PassContact
+    from netsight.geo.associate import associate_passes
+
+    if sum(g is not None and g.projected for g in georefs) < 2:
+        return None
+    index = {name: i for i, (name, _, _) in enumerate(images)}
+    items = []
+    for c in contacts:
+        georef = georefs[index[c["image"]]]
+        pos = c["position"]
+        if georef is None or not georef.projected or not pos or not pos.get("cov_en_m2"):
+            continue
+        cov = pos["cov_en_m2"]
+        x0, y0, x1, y1 = c["box"]
+        size = float(np.sqrt(max(x1 - x0, 1e-6) * max(y1 - y0, 1e-6)) * georef.pixel_m)
+        items.append(
+            PassContact(
+                c["contact_id"],
+                c["image"],
+                float(pos["map_x"]),
+                float(pos["map_y"]),
+                (float(cov[0]), float(cov[1]), float(cov[2])),  # [var_e, var_n, cov_en]
+                float(np.clip(c["probability"], 0, 1)),
+                size_m=size,
+            )
+        )
+    result = associate_passes(items)
+    return {
+        "method": (
+            "Hungarian assignment per pass on Mahalanobis d2 (gate 9.21, chi2 2 dof 99%) plus "
+            "a soft size cost; persistent object IDs; append-only history"
+        ),
+        "objects": len(result.objects),
+        "seen_on_2_or_more_passes": sum(len(o.passes) >= 2 for o in result.objects),
+        "object_of": {m: o.object_id for o in result.objects for m in o.members},
+        "tracked": [asdict(o) for o in result.objects],
+        "history": result.history,
+    }
 
 
 def make_audit_plan(
@@ -916,6 +969,13 @@ def analyze_sync(
             }
         )
 
+    association = associate_survey(contacts, images, georefs)
+    if association is not None:
+        for im in output:
+            for d in im["detections"]:
+                if d["id"] in association["object_of"]:
+                    d["object_id"] = association["object_of"][d["id"]]
+
     context = {
         "survey_id": survey_id,
         "contacts": contacts,
@@ -981,6 +1041,11 @@ def analyze_sync(
         )
         if completeness_result is not None and completeness_result.get("available"):
             context["completeness"] = json_safe(completeness_result)
+        if association is not None:
+            (out_dir / "association.json").write_text(
+                json.dumps(json_safe(association), indent=2), encoding="utf-8"
+            )
+            exports["association"] = "association.json"
         (runtime.pack_writer or write_evidence)(context, out_dir, runtime.ledger_path)
         previews = out_dir / "images"
         previews.mkdir(exist_ok=True)
@@ -1040,6 +1105,14 @@ def analyze_sync(
             "images": output,
             "timing_ms": round((time.perf_counter() - started) * 1000, 1),
             "hidden_candidates": hidden_candidates,
+            "association": (
+                None
+                if association is None
+                else {
+                    k: association[k]
+                    for k in ("method", "objects", "seen_on_2_or_more_passes", "tracked")
+                }
+            ),
             "calibration": runtime.calibration,
             "audit": audit_plan,
             "packs": {

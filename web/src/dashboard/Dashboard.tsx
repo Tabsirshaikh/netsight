@@ -568,6 +568,7 @@ export default function Dashboard() {
                     </div>
                     <dl className="ns-summary-list">
                       <div><dt>Raw score</dt><dd>{contact.raw_score.toFixed(4)}</dd></div>
+                      {contact.object_id && <div><dt>Object (all passes)</dt><dd>{contact.object_id}</dd></div>}
                       <div><dt>Box size</dt><dd>{Math.round(contact.box[2] - contact.box[0])} × {Math.round(contact.box[3] - contact.box[1])} px</dd></div>
                       <div><dt>Image</dt><dd title={contact.imageName}>{contact.imageIndex + 1} / {result.images.length}</dd></div>
                     </dl>

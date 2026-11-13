@@ -430,3 +430,31 @@ def test_survey_exports_include_multipass_interval(tmp_path):
     assert files["completeness_multipass"] == "completeness_multipass.tif"
     assert completeness["multi_pass"]["available"] is True
     assert completeness["multi_pass"]["overlap_km2"] > 0
+
+
+def test_contacts_on_overlapping_passes_get_persistent_object_ids(setup):
+    client, _, _ = setup
+    tif = geotiff_bytes()
+    response = client.post(
+        "/api/analyze",
+        data={"budget": "3"},
+        files=[
+            ("files", ("pass1.tif", tif, "image/tiff")),
+            ("files", ("pass2.tif", tif, "image/tiff")),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    flagged = [d for im in result["images"] for d in im["detections"] if d["flagged"]]
+    ids = [d["object_id"] for d in flagged]
+    assert len(flagged) == 4 and len(set(ids)) == 2  # same two objects seen on both passes
+    association = result["association"]
+    assert association["objects"] == 2 and association["seen_on_2_or_more_passes"] == 2
+    assert client.get(result["packs"]["association"]).json()["history"][0]["event"] == "create"
+
+
+def test_no_association_without_two_georeferenced_passes(setup):
+    client, _, _ = setup
+    result = analyze(client).json()
+    assert result["association"] is None
+    assert all("object_id" not in d for d in result["images"][0]["detections"])

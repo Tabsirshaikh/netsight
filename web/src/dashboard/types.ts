@@ -10,6 +10,8 @@ export interface Contact {
   raw_score: number;
   probability: number;
   audited?: boolean;
+  /** Persistent object ID across georeferenced passes (plan 8.5 association). */
+  object_id?: string;
   flagged: boolean;
   evidence: Record<string, unknown>;
 }
@@ -92,6 +94,7 @@ export interface Packs {
   plan: string;
   completeness?: string;
   completeness_multipass?: string;
+  association?: string;
   [key: `completeness_tif_${number}`]: string | undefined;
 }
 
@@ -251,6 +254,7 @@ export function exportLinks(packs: Packs): { id: string; label: string; url: str
     { id: 'csv', label: 'CSV', url: packs.csv },
     { id: 'plan', label: 'Verification plan (JSON)', url: packs.plan },
     ...(packs.completeness ? [{ id: 'completeness', label: 'Completeness (JSON)', url: packs.completeness }] : []),
+    ...(packs.association ? [{ id: 'association', label: 'Object association across passes (JSON)', url: packs.association }] : []),
     ...(packs.completeness_multipass ? [{ id: 'completeness_multipass', label: 'Multi-pass Pd interval (GeoTIFF)', url: packs.completeness_multipass }] : []),
   ];
   Object.entries(packs)
