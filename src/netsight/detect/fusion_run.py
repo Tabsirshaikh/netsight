@@ -123,13 +123,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dump", default="runs/calib_v0.4")
     p.add_argument("--out", default="runs/fusion_v0.4")
     p.add_argument("--cap", type=int, default=800)
+    p.add_argument("--seed", type=int, default=0, help="seed of the detection sample")
     a = p.parse_args(argv)
     root = data_dir()
     dump, out = root / a.dump, root / a.out
     out.mkdir(parents=True, exist_ok=True)
     splits = build_splits(root)
     pixels = PixelCache(root / "cache" / "pixels")
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(a.seed)
     info = json.loads((dump / "info.json").read_text(encoding="utf-8"))
     data: dict[str, dict] = {}
     for name in sorted(info["sets"]):

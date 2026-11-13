@@ -173,3 +173,14 @@ Decisions (built in the dashboard, `POST /api/packs/{id}/audit`):
 - Calibration on a new sensor needs a 50-contact audit; there is no label-free repair.
 - Audit sizes (50 contacts, 30 images) were chosen from simulations on public test surveys;
   they need checking on the first real customer survey.
+
+## Re-checks (later on 2026-11-13)
+
+| Re-check | Result |
+|---|---|
+| WP9 provenance replay | Was never built; built now (`trust/replay.py`, `POST /api/packs/{id}/replay`). Real GPU replay of two surveys: 137 and 118 candidates reproduced exactly (box and P(real) differences 0); real pack verifies; a forged copy (one probability edited) is caught; edited PDF/HTML/ledger caught in tests. |
+| GSF reader on real NOAA data | **Bug**: scale factors read from subrecord 21 instead of 100, record names off by one; could not read any real file. Fixed; two NOAA Reson 7125 files read (191, 250 pings, depths 17-32 m). Regression test on a 78 KB cut. |
+| KMALL reader on real NOAA data | **Bug**: multi-fan MRZ rejected; could not read the EM304 file. Fixed (fans joined per ping counter and swath; dual-swath fans kept as separate along-track pings). 332 pings, 800 beams, 878 m median depth on the Blake Plateau. Regression test on a 211 KB cut. |
+| B3 shadow rule, correct side | Verdict unchanged. Pooled over 466 real test objects, requiring a shadow drops 89% (right only), 91% (away from centre), 81% (either side) of real objects; AUROC 0.49-0.51 vs 0.86 for the score. Side effect fixed: the dashboard's evidence searched only to the right; it now searches both sides and reports `shadow_side`. |
+| Second seed / block offset | Gate with blocks shifted 25 images: flagged blocks fail 93% (13/14) vs passed 33% (4/12), AUROC 0.68 (was 93% / 35% / 0.71). Fusion with sample seed 1: score-only best on every set, fusion worse on every set (pooled log loss 0.317 vs 0.258); conclusions unchanged. |
+| SAM box refinement | Makes boxes worse: IoU with held-out human labels GhostVision 0.60->0.46, mine 0.63->0.51, SCTD 0.77->0.74; better only on AquaScan 0.67->0.71. Stays off (opt-in `--refine`, now documented with these numbers). |

@@ -14,7 +14,7 @@ import numpy as np
 ENVELOPE_OF = {"ghostvision_shift": "ghostvision"}
 
 
-def run(dump: Path, budget: float = 1.0) -> dict:
+def run(dump: Path, budget: float = 1.0, offset: int = 0) -> dict:
     from netsight.demo.run_survey import (
         _flatten,
         _groups,
@@ -59,7 +59,7 @@ def run(dump: Path, budget: float = 1.0) -> dict:
         envelope = GeometryEnvelope.from_profiles(profiles, min_boxes=30)
         for g in sorted(set(groups)):
             idx = [i for i, x in enumerate(groups) if x == g]
-            for start in range(0, len(idx), BLOCK_IMAGES):
+            for start in range(offset, len(idx), BLOCK_IMAGES):
                 part = idx[start : start + BLOCK_IMAGES]
                 if len(part) < BLOCK_IMAGES // 2:
                     continue
@@ -119,8 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dump", default="runs/calib_v0.4")
     p.add_argument("--out", default="runs/withdrawal_v0.4.json")
     p.add_argument("--budget", type=float, default=1.0)
+    p.add_argument("--offset", type=int, default=0, help="shift block boundaries (images)")
     a = p.parse_args(argv)
-    res = run(data_dir() / a.dump, a.budget)
+    res = run(data_dir() / a.dump, a.budget, a.offset)
     (data_dir() / a.out).write_text(json.dumps(res, indent=2, default=float), encoding="utf-8")
     print(json.dumps(res["summary"], indent=2))
     for b in res["blocks"]:

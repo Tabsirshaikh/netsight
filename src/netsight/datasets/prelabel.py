@@ -359,7 +359,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("images_dir", type=Path)
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--model", type=Path, required=True)
-    parser.add_argument("--refine", action="store_true")
+    parser.add_argument(
+        "--refine",
+        action="store_true",
+        help=(
+            "SAM box refinement. Measured 2026-11-13 on held-out test labels (IoU with the "
+            "human box): worse on GhostVision 0.60->0.46, mine 0.63->0.51, SCTD 0.77->0.74; "
+            "better only on AquaScan 0.67->0.71. Off by default; not recommended."
+        ),
+    )
     parser.add_argument("--min-score", type=float, default=0.3)
     args = parser.parse_args(argv)
     if not args.images_dir.is_dir():
