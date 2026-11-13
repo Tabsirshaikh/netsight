@@ -434,3 +434,21 @@ def evidence_table(
         }
         rows.append(row)
     return rows
+
+
+def evidence_both_sides(image: ArrayLike, box: Box, **kwargs: object) -> dict:
+    """Evidence with the shadow searched on both sides of the box (side not known).
+
+    On a centre-nadir waterfall the far-range side, where the shadow falls, is right for
+    starboard objects and left for port objects. Re-check 2026-11-13: searching only to the
+    right missed most left-side shadows. The side with the longer shadow run is reported.
+    """
+    right = evidence_features(image, box, range_sign=1, **kwargs).as_dict()  # type: ignore[arg-type]
+    left = evidence_features(image, box, range_sign=-1, **kwargs).as_dict()  # type: ignore[arg-type]
+    candidates = [
+        (d, side) for d, side in ((right, "right"), (left, "left")) if d["shadow_present"]
+    ]
+    if not candidates:
+        return {**right, "shadow_side": None}
+    best, side = max(candidates, key=lambda c: c[0]["shadow_length_px"])
+    return {**best, "shadow_side": side}

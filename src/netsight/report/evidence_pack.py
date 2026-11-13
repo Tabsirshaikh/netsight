@@ -12,7 +12,7 @@ from netsight.trust.applicability import ClaimDecision
 from netsight.trust.provenance import Ledger
 from netsight.trust.wording import DISCLAIMER, check_wording
 
-type EvidenceValue = float | bool | None
+type EvidenceValue = float | bool | str | None  # str: e.g. shadow_side
 
 
 @dataclass(frozen=True)

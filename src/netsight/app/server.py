@@ -186,7 +186,7 @@ def default_runtime_factory() -> Runtime:
     from netsight.detect.pilot import build_splits
     from netsight.detect.pixel_cache import PixelCache
     from netsight.detect.tta import predict_image_tta
-    from netsight.evidence import evidence_features
+    from netsight.evidence import evidence_both_sides
 
     root = Path(data_dir())
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -245,7 +245,7 @@ def default_runtime_factory() -> Runtime:
         geometry=geometry_claim,
         recall=validation_recall,
         threshold=count_threshold,
-        evidence=evidence_features,
+        evidence=evidence_both_sides,  # shadow side is not known for images
         samples=samples,
     )
 
@@ -1052,7 +1052,8 @@ def analyze_sync(
             if not show_all and not flagged and float(probability) < MIN_SHOWN_PROBABILITY:
                 hidden_candidates += 1  # near-zero candidates: used for the threshold, not shown
                 continue
-            evidence = runtime.evidence(image, box).as_dict() if flagged else {}
+            measured = runtime.evidence(image, box) if flagged else {}
+            evidence = measured if isinstance(measured, dict) else measured.as_dict()
             detection = {
                 "id": contact_id,
                 "box": box.tolist(),

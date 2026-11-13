@@ -326,3 +326,11 @@ def test_coverage_and_multipass_are_reported(arguments: dict) -> None:
     html = render_html(pack)
     assert "Coverage" in html and "18%" in html
     assert "Multi-pass" in html and "0.6 to 0.8" in html
+
+
+def test_text_evidence_such_as_shadow_side_is_rendered(arguments: dict, contact: Contact) -> None:
+    arguments["contacts"] = [
+        replace(contact, evidence={"shadow_present": True, "shadow_side": "left"})
+    ]
+    html = render_html(build_pack(**arguments))
+    assert "shadow_side=left" in html
