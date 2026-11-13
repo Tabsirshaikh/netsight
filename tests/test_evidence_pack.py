@@ -184,10 +184,17 @@ def test_write_and_ledger(arguments: dict, tmp_path: Path, monkeypatch: pytest.M
                 "model_id": pack["model"]["model_id"],
                 "claim_level": pack["claim"]["level"],
                 "n_contacts": pack["n_contacts"],
+                "pdf_sha256": calls[0][1]["pdf_sha256"],
             },
         )
     ]
     assert ledger.verify() == []
+    # the PDF is reproducible, so its hash in the ledger can be replayed
+    pdfs = [
+        (d / "evidence_pack.pdf").read_bytes() for d in (tmp_path / "without", tmp_path / "with")
+    ]
+    assert pdfs[0] == pdfs[1]
+    assert calls[0][1]["pdf_sha256"] == sha256(pdfs[0]).hexdigest()
     assert ledger.head
     assert json.loads(with_ledger[0].read_text(encoding="utf-8")) == pack
 

@@ -85,6 +85,7 @@ export type Completeness = MeasuredCompleteness | { available: false; reason: st
 export interface Packs {
   json: string;
   html: string;
+  pdf?: string;
   geojson: string;
   kml: string;
   csv: string;
@@ -244,6 +245,7 @@ export function completenessColor(value: number): string {
 
 export function exportLinks(packs: Packs): { id: string; label: string; url: string }[] {
   const links = [
+    ...(packs.pdf ? [{ id: 'pdf', label: 'Evidence pack (PDF, one page)', url: packs.pdf }] : []),
     { id: 'geojson', label: 'GeoJSON', url: packs.geojson },
     { id: 'kml', label: 'KML', url: packs.kml },
     { id: 'csv', label: 'CSV', url: packs.csv },

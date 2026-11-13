@@ -418,6 +418,7 @@ export default function Dashboard() {
             <div className="ns-exports">
               <a href={result?.packs.json} aria-disabled={!result} tabIndex={result ? 0 : -1}>↓ <span>Download evidence pack (JSON)</span></a>
               <a href={result?.packs.html} aria-disabled={!result} tabIndex={result ? 0 : -1} target="_blank" rel="noreferrer">HTML report ↗</a>
+              {result?.packs.pdf && <a href={result.packs.pdf} target="_blank" rel="noreferrer">PDF ↗</a>}
               {downloads.map(link => <a key={link.id} href={link.url} download>↓ {link.label}</a>)}
             </div>
           </div>

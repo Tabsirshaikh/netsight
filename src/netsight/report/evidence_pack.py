@@ -10,7 +10,7 @@ from pathlib import Path
 
 from netsight.trust.applicability import ClaimDecision
 from netsight.trust.provenance import Ledger
-from netsight.trust.wording import check_wording
+from netsight.trust.wording import DISCLAIMER, check_wording
 
 type EvidenceValue = float | bool | None
 
@@ -425,7 +425,8 @@ def render_html(pack: dict) -> str:
         "<h2>Contacts</h2><p>Soft evidence is descriptive only; it does not "
         "drop or down-weight contacts.</p>"
         f"{contacts}{_extras_html(pack)}<h2>Inputs</h2>{inputs}"
-        f"<footer>Pack SHA-256: {_text(pack['pack_sha256'])}</footer>"
+        f"<footer><p><strong>Disclaimer:</strong> {_text(DISCLAIMER)}</p>"
+        f"Pack SHA-256: {_text(pack['pack_sha256'])}</footer>"
         "</main></body></html>\n"
     )
 
@@ -450,6 +451,10 @@ def write_pack(
     html_path = directory / "evidence_pack.html"
     json_path.write_bytes(json_text.encode("utf-8"))
     html_path.write_bytes(html_text.encode("utf-8"))
+    from netsight.report.pdf import render_pdf
+
+    pdf_bytes = render_pdf(pack)
+    (directory / "evidence_pack.pdf").write_bytes(pdf_bytes)
     if ledger is not None:
         ledger.append(
             "report",
@@ -459,6 +464,7 @@ def write_pack(
                 "model_id": pack["model"]["model_id"],
                 "claim_level": pack["claim"]["level"],
                 "n_contacts": pack["n_contacts"],
+                "pdf_sha256": sha256(pdf_bytes).hexdigest(),
             },
         )
     return json_path, html_path

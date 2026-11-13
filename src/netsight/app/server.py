@@ -365,6 +365,7 @@ def write_evidence(context: dict[str, Any], out_dir: Path, ledger_path: Path) ->
 DOWNLOADS = {
     "evidence_pack.json": "application/json",
     "evidence_pack.html": "text/html",
+    "evidence_pack.pdf": "application/pdf",
     "contacts.geojson": "application/geo+json",
     "contacts.kml": "application/vnd.google-earth.kml+xml",
     "contacts.csv": "text/csv",
@@ -1044,6 +1045,7 @@ def analyze_sync(
             "packs": {
                 "json": f"/api/packs/{survey_id}/evidence_pack.json",
                 "html": f"/api/packs/{survey_id}/evidence_pack.html",
+                "pdf": f"/api/packs/{survey_id}/evidence_pack.pdf",
                 **{k: f"/api/packs/{survey_id}/{v}" for k, v in exports.items()},
             },
             "georeferenced": [g is not None for g in georefs],
