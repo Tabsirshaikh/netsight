@@ -458,3 +458,37 @@ def test_no_association_without_two_georeferenced_passes(setup):
     result = analyze(client).json()
     assert result["association"] is None
     assert all("object_id" not in d for d in result["images"][0]["detections"])
+
+
+def test_raw_xtf_upload_with_navigation_provenance(setup, tmp_path):
+    from helpers.synth_xtf import write_synthetic_xtf
+
+    client, _, contexts = setup
+    raw = write_synthetic_xtf(tmp_path / "line1.xtf", n_pings=30, n_samples=500).read_bytes()
+    response = client.post(
+        "/api/analyze",
+        data={"budget": "3"},
+        files=[("files", ("line1.xtf", raw, "application/octet-stream"))],
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    source = result["sources"][0]
+    assert source["format"] == "xtf" and source["nav_source_counts"] == {"sensor": 30}
+    assert result["images"][0]["name"].startswith("line1_rows")
+    assert result["images"][0]["not_searched_fraction"] > 0  # nadir water column
+    flagged = [d for d in result["images"][0]["detections"] if d["flagged"]]
+    assert flagged
+    position = contexts[0]["contacts"][0]["position"]
+    assert position["lat"] is not None and "ping navigation" in position["method"]
+    assert contexts[0]["sources"][0]["file"] == "line1.xtf"
+    assert contexts[0]["inputs"][result["images"][0]["name"]] == hashlib.sha256(raw).hexdigest()
+
+
+def test_corrupt_raw_file_is_a_clear_422(setup):
+    client, _, _ = setup
+    response = client.post(
+        "/api/analyze",
+        data={"budget": "1"},
+        files=[("files", ("bad.xtf", b"\x01" * 64, "application/octet-stream"))],
+    )
+    assert response.status_code == 422 and "bad.xtf" in response.json()["detail"]

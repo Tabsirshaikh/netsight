@@ -86,3 +86,20 @@ def test_write_pack_writes_pdf_and_html_has_disclaimer(pack_args, tmp_path):
     from html import escape
 
     assert escape(DISCLAIMER) in render_html(pack)
+
+
+def test_navigation_provenance_section(pack_args):
+    pack_args["sources"] = [
+        {
+            "file": "line1.xtf",
+            "format": "xtf",
+            "n_pings": 30,
+            "nav_source_counts": {"sensor": 30},
+            "altitude_source_counts": {"recorded": 30},
+            "ground_res_m": 0.1,
+            "notes": ["rows not resampled to square pixels: implausible stretch"],
+        }
+    ]
+    pack = build_pack(**pack_args)
+    html = render_html(pack)
+    assert "Navigation provenance" in html and "line1.xtf" in html and "sensor: 30" in html

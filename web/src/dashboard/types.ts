@@ -179,6 +179,7 @@ export interface Analysis {
   };
   audit?: AuditPlan;
   calibration?: CalibrationInfo;
+  sources?: RawSource[];
   images: SurveyImage[];
   timing_ms: number;
   packs: Packs;
@@ -306,3 +307,19 @@ export interface Reliability {
   methods: Record<string, { ece: number; brier: number; bins: ReliabilityBin[] }>;
 }
 export interface CalibrationInfo { method?: string; fitted_on?: string; reliability?: Reliability }
+
+/** Provenance of a raw XTF / JSF file read by the API (plan 16 item 1). */
+export interface RawSource {
+  file: string;
+  format: string;
+  n_pings: number;
+  nav_source_counts: Record<string, number>;
+  altitude_source_counts: Record<string, number>;
+  coord_kinds: string[];
+  ground_res_m: number;
+  along_track_stretch: number;
+  not_searched_fraction: number;
+  absent_sides?: string[];
+  notes: string[];
+  images: string[];
+}

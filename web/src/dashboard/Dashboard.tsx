@@ -202,8 +202,8 @@ export default function Dashboard() {
 
   function addFiles(incoming: File[]) {
     setError('');
-    const valid = incoming.every(file => /\.(png|jpe?g|tiff?|bmp)$/i.test(file.name));
-    if (!valid) { setError('Choose PNG, JPG, TIF, TIFF or BMP files. Multiple images form one survey.'); return; }
+    const valid = incoming.every(file => /\.(png|jpe?g|tiff?|bmp|xtf|jsf)$/i.test(file.name));
+    if (!valid) { setError('Choose PNG, JPG, TIF, TIFF, BMP images or raw XTF / JSF side-scan files. Multiple files form one survey.'); return; }
     const next = [...files, ...incoming];
     if (next.length + sampleIds.length > 20) { setError('A survey can contain up to 20 images.'); return; }
     if (next.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024 - 128 * 1024) {
@@ -378,12 +378,12 @@ export default function Dashboard() {
             onDragOver={event => { event.preventDefault(); if (!busy) setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={event => { event.preventDefault(); setDragOver(false); if (!busy) addFiles(Array.from(event.dataTransfer.files)); }}>
-            <input ref={fileInput} type="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp"
+            <input ref={fileInput} type="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.xtf,.jsf"
               disabled={busy} aria-label="Upload sonar images"
               onChange={event => { addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
             <span className="ns-upload-icon" aria-hidden="true">↑</span>
             <strong>Drop sonar images</strong><span>or choose files</span>
-            <small>PNG, JPG, TIFF, BMP · 50 MB total<br />Multiple images = one survey</small>
+            <small>PNG, JPG, TIFF, BMP, raw XTF / JSF · 50 MB total<br />Multiple files = one survey</small>
           </label>
           {!!files.length && <ul className="ns-file-list">{files.map((file, i) => (
             <li key={`${file.name}-${i}`}><span title={file.name}>{file.name}</span>
@@ -418,7 +418,6 @@ export default function Dashboard() {
             <div className="ns-exports">
               <a href={result?.packs.json} aria-disabled={!result} tabIndex={result ? 0 : -1}>↓ <span>Download evidence pack (JSON)</span></a>
               <a href={result?.packs.html} aria-disabled={!result} tabIndex={result ? 0 : -1} target="_blank" rel="noreferrer">HTML report ↗</a>
-              {result?.packs.pdf && <a href={result.packs.pdf} target="_blank" rel="noreferrer">PDF ↗</a>}
               {downloads.map(link => <a key={link.id} href={link.url} download>↓ {link.label}</a>)}
             </div>
           </div>
@@ -549,6 +548,22 @@ export default function Dashboard() {
                 <p className="ns-micro">Recall: {result.operating.recall_source}. {localBudget && 'Re-run for a recall estimate at the preview budget.'}</p>
                 {(result.operating.unit ?? 'image') === 'image' && <p className="ns-micro">Count rule: top floor(budget × images) by raw score; boundary ties are included. The budget is not a measured false-alarm rate for this survey.</p>}
               </section>
+              {!!result.sources?.length && (
+                <section className="ns-operating" aria-label="Navigation provenance">
+                  <div className="ns-section-title"><h3>Navigation provenance</h3><span>RAW FILES</span></div>
+                  {result.sources.map(s => (
+                    <dl className="ns-summary-list" key={s.file}>
+                      <div><dt>File</dt><dd>{s.file} · {s.format.toUpperCase()}</dd></div>
+                      <div><dt>Pings</dt><dd>{s.n_pings.toLocaleString()}</dd></div>
+                      <div><dt>Navigation</dt><dd>{Object.entries(s.nav_source_counts).map(([k, v]) => `${k} ${v}`).join(', ')}</dd></div>
+                      <div><dt>Altitude</dt><dd>{Object.entries(s.altitude_source_counts).map(([k, v]) => `${k} ${v}`).join(', ')}</dd></div>
+                      <div><dt>Ground resolution</dt><dd>{s.ground_res_m} m · rows ×{s.along_track_stretch.toFixed(2)}</dd></div>
+                      <div><dt>Not searched</dt><dd>{percent(s.not_searched_fraction)} of the shown swath{s.absent_sides?.length ? ` · no ${s.absent_sides.join(' or ')} data` : ''}</dd></div>
+                      {s.notes.map((n, i) => <div key={i}><dt>{i === 0 ? 'Reader notes' : ''}</dt><dd>{n}</dd></div>)}
+                    </dl>
+                  ))}
+                </section>
+              )}
               {result.calibration?.reliability && <ReliabilityChart reliability={result.calibration.reliability} />}
               {result.completeness && <CompletenessResults completeness={result.completeness} result={result} imageIndex={imageIndex} onImage={chooseImage} />}
               <PlanResults url={result.packs.plan} onSelect={chooseContact} />

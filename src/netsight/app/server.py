@@ -38,11 +38,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from netsight.app.raw_ingest import RAW_EXTENSIONS, ingest_raw, locate_box
+
 LOG = logging.getLogger(__name__)
 MAX_BYTES = 50 * 1024 * 1024
 MAX_IMAGES = 20
 MAX_PIXELS = 40_000_000
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".xtf", ".jsf"}
 PROFILES = {"general", "ghostvision", "aquascan", "mine", "sctd", "subpipe"}
 START_COMMAND = "uv run python -m netsight.app.server --port 8000"
 
@@ -357,6 +359,7 @@ def write_evidence(context: dict[str, Any], out_dir: Path, ledger_path: Path) ->
         completeness=context.get("completeness"),
         verification_plan=context.get("verification_plan"),
         coverage=context.get("coverage"),
+        sources=context.get("sources"),
     )
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     write_pack(pack, out_dir, ledger=Ledger(ledger_path))
@@ -830,6 +833,7 @@ def analyze_sync(
     show_all: bool = False,
     completeness: bool = False,
     budget_unit: str = "image",
+    raw_sources: dict[str, tuple[Any, int]] | None = None,
 ) -> dict[str, Any]:
     from netsight.app.geo_outputs import contact_position, georeference
     from netsight.trust.area_budget import equivalent_image_budget, searched_area_km2
@@ -881,9 +885,13 @@ def analyze_sync(
     from netsight.trust.coverage import not_searched_mask
 
     # GeoTIFF uploads are mosaics; other uploads are waterfalls (nadir column rule applies)
+    raw_sources = raw_sources or {}
+    # raw files carry their own not-searched mask from ground-range conversion
     not_searched = [
-        not_searched_mask(image, waterfall=georef is None)
-        for (_, image, _), georef in zip(images, georefs, strict=True)
+        raw_sources[name][0].chunks[raw_sources[name][1]].not_searched
+        if name in raw_sources
+        else not_searched_mask(image, waterfall=georef is None)
+        for (name, image, _), georef in zip(images, georefs, strict=True)
     ]
     if budget_unit == "km2":
         assert area_km2 is not None
@@ -951,6 +959,8 @@ def analyze_sync(
                         "position": (
                             contact_position(georefs[index], tuple(float(x) for x in box))
                             if georefs[index] is not None
+                            else locate_box(*raw_sources[name], tuple(float(x) for x in box))
+                            if name in raw_sources
                             else None
                         ),
                         "review": None,
@@ -1019,6 +1029,10 @@ def analyze_sync(
     context["verification_plan"] = json_safe(
         verification_plan(export_records(contacts, survey_id, claim.level))
     )
+    seen: dict[int, Any] = {}
+    for raw, _ in raw_sources.values():
+        seen.setdefault(id(raw), raw.summary)
+    context["sources"] = list(seen.values())
     context["coverage"] = {
         "not_searched_fraction": float(
             sum(m.sum() for m in not_searched) / max(sum(m.size for m in not_searched), 1)
@@ -1105,6 +1119,7 @@ def analyze_sync(
             "images": output,
             "timing_ms": round((time.perf_counter() - started) * 1000, 1),
             "hidden_candidates": hidden_candidates,
+            "sources": context["sources"],
             "association": (
                 None
                 if association is None
@@ -1252,9 +1267,12 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
         # Reject extensions before initializing expensive research assets.
         for upload in uploads:
             if Path(upload.filename or "").suffix.lower() not in EXTENSIONS:
-                raise HTTPException(415, "Unsupported file type. Use PNG, JPG, TIF, TIFF, or BMP.")
+                raise HTTPException(
+                    415, "Unsupported file type. Use PNG, JPG, TIF, TIFF, BMP, XTF or JSF."
+                )
         state = await get_runtime()
         images: list[tuple[str, np.ndarray, bytes]] = []
+        raw_sources: dict[str, tuple[Any, int]] = {}
         total = 0
         names: set[str] = set()
 
@@ -1277,6 +1295,18 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             if total > MAX_BYTES:
                 raise HTTPException(413, "Images exceed the 50 MB request limit.")
             name = unique_name(upload.filename or "image.png")
+            if Path(name).suffix.lower() in RAW_EXTENSIONS:
+                try:
+                    raw = await anyio.to_thread.run_sync(ingest_raw, data, name)
+                except Exception as exc:  # reader / normalisation errors carry a plain reason
+                    raise HTTPException(422, f"{name}: could not read raw file: {exc}") from exc
+                for k, chunk in enumerate(raw.chunks):
+                    chunk_name = unique_name(chunk.name)
+                    images.append((chunk_name, chunk.image, data))
+                    raw_sources[chunk_name] = (raw, k)
+                if len(images) > MAX_IMAGES:
+                    raise HTTPException(422, f"More than {MAX_IMAGES} images after splitting.")
+                continue
             image = await anyio.to_thread.run_sync(decode_image, data, name)
             images.append((name, image, data))
         by_id = {s.id: s for s in state.samples}
@@ -1306,6 +1336,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
                         show_all,
                         completeness,
                         budget_unit,
+                        raw_sources,
                     )
             except HTTPException:
                 raise

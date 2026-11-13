@@ -494,9 +494,7 @@ def completeness_map(
                         pd_lower=lower,
                         status=status,
                         searched_fraction=frac,
-                        pd_lower_area=(
-                            0.0 if status == "not_searched" else lower * frac
-                        ),
+                        pd_lower_area=(0.0 if status == "not_searched" else lower * frac),
                     )
                 )
     return out

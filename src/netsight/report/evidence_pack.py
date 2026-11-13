@@ -146,6 +146,7 @@ def build_pack(
     completeness: Mapping | None = None,
     verification_plan: Mapping | None = None,
     coverage: Mapping | None = None,
+    sources: Sequence[Mapping] | None = None,
 ) -> dict:
     """Build a detached, JSON-compatible pack and its canonical digest.
 
@@ -228,6 +229,8 @@ def build_pack(
         pack["completeness"] = section
     if coverage is not None:
         pack["coverage"] = dict(coverage)
+    if sources:
+        pack["sources"] = [dict(x) for x in sources]
     if verification_plan is not None:
         plan = dict(verification_plan)
         plan["entries"] = list(plan.get("entries", []))[:10]
@@ -288,6 +291,28 @@ def _evidence_text(evidence: Mapping[str, EvidenceValue]) -> str:
 def _extras_html(pack: dict) -> str:
     """Optional completeness and verification-plan sections."""
     parts = []
+    sources = pack.get("sources")
+    if sources:
+        rows = [
+            [
+                x.get("file"),
+                x.get("format"),
+                x.get("n_pings"),
+                ", ".join(f"{k}: {v}" for k, v in (x.get("nav_source_counts") or {}).items()),
+                ", ".join(f"{k}: {v}" for k, v in (x.get("altitude_source_counts") or {}).items()),
+                x.get("ground_res_m"),
+                "; ".join(x.get("notes") or []) or "-",
+            ]
+            for x in sources
+        ]
+        parts.append(
+            "<h2>Navigation provenance</h2><p>Raw files read by NetSight: where each ping's "
+            "position and altitude came from, and anything the readers had to work around.</p>"
+            + _table(
+                ["File", "Format", "Pings", "Navigation", "Altitude", "Ground res (m)", "Notes"],
+                rows,
+            )
+        )
     cov = pack.get("coverage")
     if cov:
         parts.append(
