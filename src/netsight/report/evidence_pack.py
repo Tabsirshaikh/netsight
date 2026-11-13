@@ -353,7 +353,7 @@ def render_html(pack: dict) -> str:
     )
     calibration = _table(
         ["Field", "Value"],
-        [[key, value] for key, value in sorted(pack["calibration"].items()) if key != "reliability"],
+        [[k, v] for k, v in sorted(pack["calibration"].items()) if k != "reliability"],
     )
     if pack["calibration"].get("reliability"):
         from netsight.trust.reliability import reliability_svg

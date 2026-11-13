@@ -38,7 +38,7 @@ class RangeHandler(BaseHTTPRequestHandler):
         fault = self.faults.get(self.path)
         if fault and fault[0] > 0:
             fault[0] -= 1
-            part = body[: len(body) // 3]
+            part = body[: max(1, len(body) // 3)]  # a short answer still makes progress
             self.send_header("Content-Length", str(len(part) if fault[1] == "short" else len(body)))
             self.end_headers()
             self.wfile.write(part)
