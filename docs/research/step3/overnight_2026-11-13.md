@@ -64,8 +64,24 @@ The old mine specialist is still worse on corrected labels (0.30 vs 0.33): not u
 2. More varied REAL surveys with labels (partners, own data) - still the only lever with a
    measured, repeatable gain (+0.05 AP per doubling of recordings).
 3. Use the square-pixel step (and the GhostVision specialist for gear surveys) at inference.
-4. Bigger detector: see section 7.
+4. Bigger detector: the one model change that passed its test (section 7).
 
-## 7. Bigger detector test (D-FINE-M)
+## 7. Bigger detector (D-FINE-M): the first real gain
 
-(filled in when the run finishes)
+1-hour test training, identical recipe, only the model size changed (D-FINE-S -> D-FINE-M, both
+Apache-2.0 COCO weights). Paired comparison on corrected (conservative v2) labels:
+
+| Test set | small | medium | change (95% CI) |
+|---|---|---|---|
+| mine | 0.218 | 0.266 | **+0.048** (+0.014, +0.087) |
+| GhostVision | 0.388 | 0.512 | **+0.124** (+0.079, +0.168) |
+| Contact | 0.202 | 0.217 | +0.015 (-0.009, +0.037) |
+| SubPipe (original labels, IoU 0.3) | 0.686 | 0.568 | **-0.118** (-0.199, -0.038) |
+
+It passed the gate, so one full training was run: model v0.6 = v0.4 recipe with D-FINE-M
+(`runs/research_v0.6`). Its comparison with v0.4 is in section 8. Pipeline surveys keep v0.4
+unless v0.6 recovers SubPipe. Cost: inference about 1.7x slower than v0.4.
+
+## 8. v0.6 vs v0.4 (full training)
+
+(filled in when training finishes)
