@@ -21,6 +21,9 @@ export interface SurveyImage {
   height: number;
   url: string;
   detections: Contact[];
+  /** Share of the image the sonar searched nothing (water column, lost range, no data). */
+  not_searched_fraction?: number;
+  not_searched_url?: string;
 }
 
 export interface Position {
@@ -43,7 +46,20 @@ export interface CompletenessCell {
   n_detected: number;
   pd: number;
   pd_lower: number;
-  status: 'ok' | 'insufficient_trials';
+  status: 'ok' | 'insufficient_trials' | 'not_searched';
+  searched_fraction?: number;
+  /** Pd lower bound for an object anywhere in the cell (unsearched area finds nothing). */
+  pd_lower_area?: number | null;
+}
+
+export interface MultiPass {
+  available: boolean;
+  reason?: string;
+  passes?: number;
+  overlap_km2?: number;
+  overlap_pd_max_median?: number | null;
+  overlap_pd_independent_median?: number | null;
+  note?: string;
 }
 
 export interface MeasuredCompleteness {
@@ -51,6 +67,8 @@ export interface MeasuredCompleteness {
   claim_level: ClaimLevel;
   method: string;
   library_size: number;
+  library_source?: 'audit' | 'validation';
+  multi_pass?: MultiPass;
   profile: string;
   grid: [number, number];
   trials: number;
@@ -72,6 +90,7 @@ export interface Packs {
   csv: string;
   plan: string;
   completeness?: string;
+  completeness_multipass?: string;
   [key: `completeness_tif_${number}`]: string | undefined;
 }
 
@@ -204,8 +223,17 @@ export const profiles: { value: Profile; label: string }[] = [
 export const percent = (n: number | null | undefined) =>
   n == null ? '—' : `${(n * 100).toFixed(1)}%`;
 
+/** Value used for colour: area-adjusted lower bound when known; 0 where nothing was searched. */
+export function cellPd(cell: CompletenessCell): number {
+  if (cell.status === 'not_searched') return 0;
+  return cell.pd_lower_area ?? cell.pd_lower;
+}
+
 export function cellDescription(cell: CompletenessCell): string {
-  return `Pd ≥ ${percent(cell.pd_lower)} (90% lower bound), ${cell.n_detected} of ${cell.n_trials} injected targets found${cell.status === 'insufficient_trials' ? ' · too few trials' : ''}`;
+  if (cell.status === 'not_searched') return 'Not searched (water column, lost range or no data): Pd 0';
+  const searched = cell.searched_fraction !== undefined && cell.searched_fraction < 1
+    ? ` · ${percent(cell.searched_fraction)} of the cell searched` : '';
+  return `Pd ≥ ${percent(cellPd(cell))} (90% lower bound), ${cell.n_detected} of ${cell.n_trials} injected targets found${searched}${cell.status === 'insufficient_trials' ? ' · too few trials' : ''}`;
 }
 
 /** Shared colour scale for the canvas, legend and mini-grids. */
@@ -221,6 +249,7 @@ export function exportLinks(packs: Packs): { id: string; label: string; url: str
     { id: 'csv', label: 'CSV', url: packs.csv },
     { id: 'plan', label: 'Verification plan (JSON)', url: packs.plan },
     ...(packs.completeness ? [{ id: 'completeness', label: 'Completeness (JSON)', url: packs.completeness }] : []),
+    ...(packs.completeness_multipass ? [{ id: 'completeness_multipass', label: 'Multi-pass Pd interval (GeoTIFF)', url: packs.completeness_multipass }] : []),
   ];
   Object.entries(packs)
     .filter(([key, url]) => /^completeness_tif_\d+$/.test(key) && !!url)

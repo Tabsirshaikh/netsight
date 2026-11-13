@@ -368,3 +368,64 @@ def test_target_library_uses_real_point_object_datasets_only():
     from netsight.app.server import LIBRARY_DATASETS
 
     assert LIBRARY_DATASETS == ("mine", "ghostvision", "aquascan")
+
+
+def test_images_report_not_searched_share_and_overlay(setup):
+    client, _, _ = setup
+    result = analyze(client).json()
+    image = result["images"][0]
+    assert image["not_searched_fraction"] == 0.0  # uniform seabed in the fixture
+    overlay = client.get(image["not_searched_url"])
+    assert overlay.status_code == 200 and overlay.headers["content-type"] == "image/png"
+
+
+def test_survey_exports_include_multipass_interval(tmp_path):
+    from netsight.app.geo_outputs import georeference
+    from netsight.app.server import write_survey_exports
+
+    def tif(x0):
+        import rasterio
+        from rasterio.transform import from_origin
+
+        path = tmp_path / f"{x0}.tif"
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=32,
+            width=40,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:32643",
+            transform=from_origin(x0, 2000000, 0.5, 0.5),
+        ) as ds:
+            ds.write(np.full((1, 32, 40), 100, np.uint8))
+        return georeference(path.read_bytes(), path.name)
+
+    images = [
+        ("a.tif", np.full((32, 40), 100, np.uint8), b""),
+        ("b.tif", np.full((32, 40), 100, np.uint8), b""),
+    ]
+    cells = [
+        {
+            "image_index": i,
+            "row": r,
+            "col": c,
+            "status": "ok",
+            "pd_lower": 0.5,
+            "box": [0, 0, 1, 1],
+            "n_trials": 6,
+            "n_detected": 3,
+        }
+        for i in range(2)
+        for r in range(3)
+        for c in range(3)
+    ]
+    completeness = {"available": True, "cells": cells}
+    masks = [np.zeros((32, 40), bool), np.zeros((32, 40), bool)]
+    files = write_survey_exports(
+        tmp_path, "s", [], "calibrated", images, [tif(500000), tif(500010)], completeness, masks
+    )
+    assert files["completeness_multipass"] == "completeness_multipass.tif"
+    assert completeness["multi_pass"]["available"] is True
+    assert completeness["multi_pass"]["overlap_km2"] > 0

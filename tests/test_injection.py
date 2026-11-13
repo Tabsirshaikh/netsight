@@ -195,3 +195,30 @@ def test_targets_never_placed_off_seabed():
     t = parametric_target("block", 10)
     for x, _ in free_positions((200, 300), t, 20, rng, avoid=np.zeros((0, 4)), allowed=mask):
         assert x + t.shape[1] <= 120 or x >= 180
+
+
+def test_completeness_cells_carry_searched_fraction_and_area_pd():
+    from netsight.trust.injection import completeness_map
+
+    img = _seabed(h=120, w=180)
+    searched_off = np.zeros(img.shape, bool)
+    searched_off[:, :60] = True  # left third of the image was not searched
+    cells = completeness_map(
+        [img],
+        [_bright_spot_detector(img)],
+        _bright_spot_detector,
+        0.5,
+        library=[parametric_target("block", 8, highlight=3.0)],
+        rng=np.random.default_rng(2),
+        passes=3,
+        per_pass=4,
+        grid=(2, 3),
+        min_trials=1,
+        not_searched=[searched_off],
+    )
+    left = [c for c in cells if c.col == 0]
+    assert all(c.status == "not_searched" and c.searched_fraction == 0 for c in left)
+    assert all(c.pd_lower_area == 0 for c in left)
+    for c in cells:
+        if c.col > 0 and c.status == "ok":
+            assert c.searched_fraction == 1 and c.pd_lower_area == c.pd_lower

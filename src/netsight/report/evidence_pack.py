@@ -145,6 +145,7 @@ def build_pack(
     inputs: Mapping[str, str],
     completeness: Mapping | None = None,
     verification_plan: Mapping | None = None,
+    coverage: Mapping | None = None,
 ) -> dict:
     """Build a detached, JSON-compatible pack and its canonical digest.
 
@@ -218,10 +219,15 @@ def build_pack(
     }
     if completeness is not None:
         section = {k: v for k, v in completeness.items() if k != "cells"}
+        cells = completeness.get("cells") or []
+        if cells:
+            section["cells_not_searched"] = sum(c.get("status") == "not_searched" for c in cells)
         if claim.level == "withdrawn":
             section["pd"] = None
             section["pd_lower90"] = None
         pack["completeness"] = section
+    if coverage is not None:
+        pack["coverage"] = dict(coverage)
     if verification_plan is not None:
         plan = dict(verification_plan)
         plan["entries"] = list(plan.get("entries", []))[:10]
@@ -282,6 +288,14 @@ def _evidence_text(evidence: Mapping[str, EvidenceValue]) -> str:
 def _extras_html(pack: dict) -> str:
     """Optional completeness and verification-plan sections."""
     parts = []
+    cov = pack.get("coverage")
+    if cov:
+        parts.append(
+            "<h2>Coverage</h2>"
+            f"<p>{round(100 * cov['not_searched_fraction'])}% of the imaged area was not "
+            "searched: water column at nadir, lost far range, no-data areas and fully black "
+            "acoustic shadows. Nothing can be found there; plan a re-survey if it matters.</p>"
+        )
     c = pack.get("completeness")
     if c and c.get("available", True):
         rows = [
@@ -291,10 +305,21 @@ def _extras_html(pack: dict) -> str:
             ["Claim level", c.get("claim_level")],
             ["Method", c.get("method")],
         ]
+        if "cells_not_searched" in c:
+            rows.append(["Cells not searched (Pd 0)", c["cells_not_searched"]])
         parts.append(
             "<h2>Search completeness</h2>"
             f"<p>{_text(c.get('caveat', ''))}</p>{_table(['Field', 'Value'], rows)}"
         )
+        mp = c.get("multi_pass")
+        if mp and mp.get("available") and mp.get("overlap_pd_max_median") is not None:
+            parts.append(
+                "<h3>Multi-pass</h3>"
+                f"<p>{_text(mp['passes'])} passes overlap on {_number(mp['overlap_km2'])} km2. "
+                "Median Pd lower bound there: "
+                f"{_number(mp['overlap_pd_max_median'])} to "
+                f"{_number(mp['overlap_pd_independent_median'])}. {_text(mp['note'])}</p>"
+            )
     plan = pack.get("verification_plan")
     if plan:
         rows = [

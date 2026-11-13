@@ -2,7 +2,8 @@
 
 The label-free count rule flags at most floor(budget x units) detections. With km2 as the unit,
 the units are the insonified seabed area of the survey (water column, lost far range and blank
-borders excluded by ``seabed_mask``), so the budget needs a metric pixel size for every image.
+borders excluded by ``coverage.not_searched_mask``), so the budget needs a metric pixel
+size for every image.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import numpy as np
 
 def searched_area_km2(images: Sequence[np.ndarray], pixel_m: Sequence[float]) -> float:
     """Insonified seabed area of ``images`` in km2, each with its own square pixel size (m)."""
-    from netsight.trust.injection import seabed_mask
+    from netsight.trust.coverage import not_searched_mask
 
     if len(images) != len(pixel_m) or not images:
         raise ValueError("one pixel size per image is required")
@@ -22,7 +23,8 @@ def searched_area_km2(images: Sequence[np.ndarray], pixel_m: Sequence[float]) ->
     for image, size in zip(images, pixel_m, strict=True):
         if not (np.isfinite(size) and size > 0):
             raise ValueError("pixel size must be a finite number > 0 m")
-        area += float(np.count_nonzero(seabed_mask(image))) * size * size
+        searched = ~not_searched_mask(image, waterfall=False)  # georeferenced = mosaic
+        area += float(np.count_nonzero(searched)) * size * size
     return area / 1e6
 
 

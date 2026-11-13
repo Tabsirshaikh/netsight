@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { gsap, useGSAP } from '../lib/gsap';
 import type { Completeness, CompletenessCell, Contact, SurveyImage } from './types';
-import { cellDescription, percent } from './types';
+import { cellDescription, cellPd, percent } from './types';
 
 interface Props {
   image: SurveyImage;
@@ -25,9 +25,21 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
   const [hover, setHover] = useState<{ contact: Contact; x: number; y: number } | null>(null);
   const [cellHover, setCellHover] = useState<{ cell: CompletenessCell; x: number; y: number } | null>(null);
   const [showCompleteness, setShowCompleteness] = useState(false);
+  const [showNotSearched, setShowNotSearched] = useState(true);
+  const [notSearched, setNotSearched] = useState<HTMLImageElement | null>(null);
   const [scaleLabel, setScaleLabel] = useState('100%');
   const [loadError, setLoadError] = useState(false);
   const tall = image.height > image.width * 2.5;
+
+  useEffect(() => {
+    setNotSearched(null);
+    if (!image.not_searched_url) return;
+    let alive = true;
+    const overlay = new Image();
+    overlay.onload = () => { if (alive) setNotSearched(overlay); };
+    overlay.src = image.not_searched_url;
+    return () => { alive = false; };
+  }, [image.not_searched_url]);
 
   const draw = useCallback(() => {
     const element = canvas.current;
@@ -56,6 +68,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
     context.translate(x, y);
     context.scale(scale, scale);
     context.drawImage(bitmap, 0, 0, image.width, image.height);
+    if (showNotSearched && notSearched) context.drawImage(notSearched, 0, 0, image.width, image.height);
     context.restore();
 
     // Cell geometry uses exactly the image-to-screen transform used by boxes.
@@ -77,7 +90,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
         // Two alpha-composited endpoints keep the scale driven by CSS variables.
         // Cells with too few trials have no estimate: hatch only, never a Pd colour.
         if (cell.status !== 'insufficient_trials') {
-          const t = Math.max(0, Math.min(1, cell.pd_lower));
+          const t = Math.max(0, Math.min(1, cellPd(cell) || 0));
           context.globalAlpha = 0.36;
           context.fillStyle = low;
           context.fillRect(bx, by, bw, bh);
@@ -166,7 +179,7 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
       }
     }
     setScaleLabel(`${Math.round(scale * 100)}%`);
-  }, [bitmap, image, flags, selected, tall, showCompleteness, completeness]);
+  }, [bitmap, image, flags, selected, tall, showCompleteness, completeness, showNotSearched, notSearched]);
 
   const fit = useCallback(() => {
     const { width, height } = size.current;
@@ -319,6 +332,8 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
       />
       <div className="ns-viewer-label"><span className="ns-live-dot" /> SONAR / {image.width} × {image.height} PX</div>
       <div className="ns-viewer-tools">
+        {image.not_searched_url && <button aria-pressed={showNotSearched} onClick={() => setShowNotSearched(v => !v)}
+          title="Water column, lost range and no-data areas: nothing can be found there">Not searched</button>}
         {completeness?.available && <button aria-pressed={showCompleteness} onClick={() => { setShowCompleteness(v => !v); setCellHover(null); }}>Completeness</button>}
         <button onClick={fit} title="Fit image (0)">Fit <kbd>0</kbd></button>
         <button onClick={() => zoomAt(1 / 1.4, size.current.width / 2, size.current.height / 2)} aria-label="Zoom out">−</button>
@@ -327,6 +342,8 @@ export function Viewer({ image, url, flags, selected, onSelect, zoomRequest, com
       </div>
       <div className="ns-viewer-legend">
         <i /> Flagged <i className="unflagged" /> Below threshold
+        {image.not_searched_fraction !== undefined && showNotSearched && notSearched &&
+          <span className="ns-not-searched-legend"><b /> Not searched · {percent(image.not_searched_fraction)} of image</span>}
         {showCompleteness && completeness?.available && <div className="ns-completeness-legend">Pd lower90: 0 <b /> 1 · <em /> too few trials</div>}
       </div>
       {(hover || (cellHover && showCompleteness)) && (

@@ -295,3 +295,27 @@ def test_reliability_diagram_is_drawn_not_dumped(arguments: dict) -> None:
     html = render_html(build_pack(**arguments))
     assert "<svg" in html and "Reliability on held-out surveys" in html
     assert "mean_predicted" not in html  # the bins are drawn, not printed as a table cell
+
+
+def test_coverage_and_multipass_are_reported(arguments: dict) -> None:
+    arguments["coverage"] = {"not_searched_fraction": 0.18, "images": [0.1, 0.26]}
+    arguments["completeness"] = {
+        "available": True,
+        "pd": 0.6,
+        "pd_lower90": 0.5,
+        "cells": [{"status": "not_searched"}, {"status": "ok"}, {"status": "ok"}],
+        "multi_pass": {
+            "available": True,
+            "passes": 2,
+            "overlap_km2": 0.01,
+            "overlap_pd_max_median": 0.6,
+            "overlap_pd_independent_median": 0.8,
+            "note": "between the two values",
+        },
+    }
+    pack = build_pack(**arguments)
+    assert pack["coverage"]["not_searched_fraction"] == 0.18
+    assert pack["completeness"]["cells_not_searched"] == 1
+    html = render_html(pack)
+    assert "Coverage" in html and "18%" in html
+    assert "Multi-pass" in html and "0.6 to 0.8" in html

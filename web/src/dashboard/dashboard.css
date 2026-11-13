@@ -372,3 +372,6 @@
   .ns-layout { height: calc(100vh - 72px); min-height: 0; }
   .ns-layout > * { min-height: 0; overflow: auto; }
 }
+
+.ns-not-searched-legend { margin-left: .8rem; }
+.ns-not-searched-legend b { display: inline-block; width: .8rem; height: .55rem; margin-right: .3rem; background: rgba(220, 60, 60, .55); vertical-align: middle; }

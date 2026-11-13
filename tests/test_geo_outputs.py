@@ -92,3 +92,59 @@ def test_completeness_tiff_on_mosaic_grid(tmp_path):
         arr = ds.read(1)
         assert ds.transform.a == 100 and ds.transform.c == 500000.0
         assert arr[0, 0] == 0.5 and arr[1, 0] == ds.nodata
+
+
+def _pass(tmp_path, name, x0, pd, mask=None):
+    from netsight.app.geo_outputs import georeference
+
+    g = georeference(_tiff_bytes(tmp_path, origin=(x0, 4000000.0)), name)
+    cells = [
+        {"row": r, "col": c, "status": "ok", "pd_lower": pd} for r in range(2) for c in range(2)
+    ]
+    return {
+        "georef": g,
+        "shape": (100, 200),
+        "grid": (2, 2),
+        "cells": cells,
+        "not_searched": np.zeros((100, 200), bool) if mask is None else mask,
+    }
+
+
+def test_multipass_interval_where_passes_overlap(tmp_path):
+    from netsight.app.geo_outputs import write_multipass_tiff
+
+    a = _pass(tmp_path, "a.tif", 500000.0, 0.5)
+    nadir = np.zeros((100, 200), bool)
+    nadir[:, 150:] = True  # pass B searched nothing in its right quarter
+    b = _pass(tmp_path, "b.tif", 500100.0, 0.6, nadir)  # overlaps A's right half
+    summary = write_multipass_tiff(tmp_path / "mp.tif", [a, b], banner="B", cell_m=10.0)
+    assert summary["available"] and summary["passes"] == 2
+    with rasterio.open(tmp_path / "mp.tif") as ds:
+        lo, hi, n = ds.read(1), ds.read(2), ds.read(3)
+        assert ds.width == 30 and ds.height == 10  # 300 m x 100 m at 10 m cells
+        assert n[5, 2] == 1 and lo[5, 2] == pytest.approx(0.5)  # A only
+        assert n[5, 12] == 2 and lo[5, 12] == pytest.approx(0.6)  # overlap
+        assert hi[5, 12] == pytest.approx(0.8)
+        assert lo[5, 26] == pytest.approx(0.0)  # B only, not searched there
+    assert summary["overlap_km2"] == pytest.approx(0.01)  # 100 m x 100 m
+
+
+def test_multipass_needs_two_metric_passes_in_one_crs(tmp_path):
+    from netsight.app.geo_outputs import write_multipass_tiff
+
+    a = _pass(tmp_path, "a.tif", 500000.0, 0.5)
+    assert write_multipass_tiff(tmp_path / "x.tif", [a], banner="B")["available"] is False
+
+
+def test_multipass_falls_back_to_pass_level_pd_when_cells_lack_trials(tmp_path):
+    from netsight.app.geo_outputs import write_multipass_tiff
+
+    a = _pass(tmp_path, "a.tif", 500000.0, 0.5)
+    b = _pass(tmp_path, "b.tif", 500100.0, 0.6)
+    for p, pd in ((a, 0.3), (b, 0.4)):
+        for c in p["cells"]:
+            c["status"] = "insufficient_trials"
+        p["pd_lower_pass"] = pd
+    summary = write_multipass_tiff(tmp_path / "mp.tif", [a, b], banner="B", cell_m=10.0)
+    assert summary["overlap_pd_max_median"] == pytest.approx(0.4)
+    assert summary["overlap_pd_independent_median"] == pytest.approx(1 - 0.7 * 0.6)

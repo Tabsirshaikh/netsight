@@ -396,7 +396,11 @@ class CompletenessCell:
     n_detected: int
     pd: float
     pd_lower: float
-    status: str  # "ok" or "insufficient_trials"
+    status: str  # "ok", "insufficient_trials" or "not_searched"
+    # share of the cell the sonar actually searched (netsight.trust.coverage), and the Pd
+    # lower bound for an object anywhere in the cell: unsearched area finds nothing
+    searched_fraction: float = 1.0
+    pd_lower_area: float = float("nan")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -415,6 +419,7 @@ def completeness_map(
     grid: tuple[int, int] = (3, 3),
     alpha: float = 0.10,
     min_trials: int = 5,
+    not_searched: Sequence[np.ndarray] | None = None,
 ) -> list[CompletenessCell]:
     """Per-image grid of Pd (with one-sided lower bounds) for targets drawn from ``library``.
 
@@ -423,16 +428,26 @@ def completeness_map(
     they would report Pd 0 everywhere. Each pass pastes ``per_pass`` random library targets at
     free seabed places and re-runs the detector once. A target counts as detected when an
     overlapping detection scores at or above the survey's operating ``threshold``. Cells under
-    ``min_trials`` are marked insufficient, never filled in.
+    ``min_trials`` are marked insufficient, never filled in. With ``not_searched`` masks (one
+    per image), each cell reports its searched fraction; cells under 5% searched are
+    "not_searched" with Pd 0, and ``pd_lower_area`` = lower bound x searched fraction.
     """
     from netsight.trust.bounds import one_sided_lower
+    from netsight.trust.coverage import NOT_SEARCHED_CELL, searched_fraction
 
     if not library:
         raise ValueError("library must contain at least one target")
     rows, cols = grid
     out: list[CompletenessCell] = []
+    if not_searched is not None and len(not_searched) != len(images):
+        raise ValueError("one not_searched mask per image is required")
     for i, image in enumerate(images):
         h, w = image.shape[:2]
+        fractions = (
+            searched_fraction(np.asarray(not_searched[i], bool), grid)
+            if not_searched is not None
+            else np.ones(grid)
+        )
         counts = np.zeros((rows, cols, 2), int)
         for _p in range(passes):
 
@@ -456,6 +471,12 @@ def completeness_map(
         for r_ in range(rows):
             for c_ in range(cols):
                 k, n = (int(v) for v in counts[r_, c_])
+                frac = float(fractions[r_, c_])
+                lower = one_sided_lower(k, n, alpha=alpha) if n else float("nan")
+                if frac < NOT_SEARCHED_CELL:
+                    status = "not_searched"
+                else:
+                    status = "ok" if n >= min_trials else "insufficient_trials"
                 out.append(
                     CompletenessCell(
                         image_index=i,
@@ -470,8 +491,12 @@ def completeness_map(
                         n_trials=n,
                         n_detected=k,
                         pd=k / n if n else float("nan"),
-                        pd_lower=one_sided_lower(k, n, alpha=alpha) if n else float("nan"),
-                        status="ok" if n >= min_trials else "insufficient_trials",
+                        pd_lower=lower,
+                        status=status,
+                        searched_fraction=frac,
+                        pd_lower_area=(
+                            0.0 if status == "not_searched" else lower * frac
+                        ),
                     )
                 )
     return out

@@ -167,3 +167,103 @@ def write_completeness_tiff(
         ds.set_band_description(1, "Pd lower bound (90%), injected reference targets")
         ds.update_tags(NETSIGHT_BANNER=banner)
     return path
+
+
+def write_multipass_tiff(
+    path: Path,
+    passes: list[dict],
+    *,
+    banner: str,
+    cell_m: float | None = None,
+    max_cells: int = 4_000_000,
+) -> dict:
+    """Multi-pass Pd interval on a common map grid (plan 16 item 6).
+
+    Each pass: {georef, shape, grid, cells (completeness cells), not_searched (mask), optional
+    pd_lower_pass (lower bound from all the pass's trials)}. Per map cell and pass, Pd = the
+    pass's cell lower bound there (pd_lower_pass where the cell lacks trials), 0 where that pass
+    searched nothing, no value outside its footprint. Bands: 1 = max over
+    passes (misses repeat), 2 = 1 - prod(1 - Pd) (misses independent), 3 = passes with a value.
+    """
+    import rasterio
+    from rasterio.transform import Affine
+
+    from netsight.trust.coverage import multipass_grid
+
+    usable = [p for p in passes if p["georef"] is not None and p["georef"].projected]
+    if len(usable) < 2 or len({p["georef"].crs_wkt for p in usable}) != 1:
+        return {
+            "available": False,
+            "reason": "needs at least two georeferenced passes in one projected (metre) CRS",
+        }
+    corners = []
+    for p in usable:
+        h, w = p["shape"]
+        corners += [p["georef"].to_map(c, r) for c in (0, w) for r in (0, h)]
+    xs, ys = [c[0] for c in corners], [c[1] for c in corners]
+    if cell_m is None:
+        sizes = [
+            max(p["shape"][1] / p["grid"][1], p["shape"][0] / p["grid"][0]) * p["georef"].pixel_m
+            for p in usable
+        ]
+        cell_m = float(np.median(sizes)) / 4
+    cols = max(1, int(np.ceil((max(xs) - min(xs)) / cell_m - 1e-9)))
+    rows = max(1, int(np.ceil((max(ys) - min(ys)) / cell_m - 1e-9)))
+    if rows * cols > max_cells:
+        scale = np.sqrt(rows * cols / max_cells)
+        cell_m *= scale
+        cols = max(1, int(np.ceil((max(xs) - min(xs)) / cell_m)))
+        rows = max(1, int(np.ceil((max(ys) - min(ys)) / cell_m)))
+    grid_t = Affine(cell_m, 0, min(xs), 0, -cell_m, max(ys))
+    cx, cy = np.meshgrid(np.arange(cols) + 0.5, np.arange(rows) + 0.5)
+    mx, my = grid_t @ (cx, cy)
+    layers = []
+    for p in usable:
+        h, w = p["shape"]
+        gr, gc = p["grid"]
+        px, py = ~Affine(*p["georef"].transform) @ (mx, my)
+        inside = (px >= 0) & (px < w) & (py >= 0) & (py < h)
+        col = np.clip(px.astype(int), 0, w - 1)
+        row = np.clip(py.astype(int), 0, h - 1)
+        # cells without enough trials fall back to the pass's pooled lower bound, if given
+        cell_pd = np.full((gr, gc), float(p.get("pd_lower_pass", np.nan)))
+        for c in p["cells"]:
+            if c["status"] == "ok":
+                cell_pd[c["row"], c["col"]] = c["pd_lower"]
+        pd = cell_pd[row * gr // h, col * gc // w]
+        pd = np.where(np.asarray(p["not_searched"], bool)[row, col], 0.0, pd)
+        layers.append(np.where(inside, pd, np.nan))
+    lo, hi, n = multipass_grid(layers)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=rows,
+        width=cols,
+        count=3,
+        dtype="float32",
+        crs=rasterio.crs.CRS.from_wkt(usable[0]["georef"].crs_wkt),
+        transform=grid_t,
+        nodata=-1.0,
+        compress="LZW",
+    ) as ds:
+        ds.write(np.where(np.isfinite(lo), lo, -1).astype(np.float32), 1)
+        ds.write(np.where(np.isfinite(hi), hi, -1).astype(np.float32), 2)
+        ds.write(n.astype(np.float32), 3)
+        ds.set_band_description(1, "Pd lower bound, misses repeat on every pass (max)")
+        ds.set_band_description(2, "Pd lower bound, misses independent between passes")
+        ds.set_band_description(3, "passes with a Pd value")
+        ds.update_tags(NETSIGHT_BANNER=banner)
+    overlap = (n >= 2) & np.isfinite(lo)
+    return {
+        "available": True,
+        "passes": len(usable),
+        "cell_m": cell_m,
+        "overlap_km2": float(overlap.sum() * cell_m * cell_m / 1e6),
+        "overlap_pd_max_median": float(np.median(lo[overlap])) if overlap.any() else None,
+        "overlap_pd_independent_median": float(np.median(hi[overlap])) if overlap.any() else None,
+        "note": (
+            "Where passes overlap, the true Pd lies between the two values: the lower assumes a "
+            "missed object is missed again on every pass, the upper that misses are independent."
+        ),
+    }

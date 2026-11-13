@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Analysis, Completeness, VerificationPlan } from './types';
-import { api, cellDescription, completenessColor, percent } from './types';
+import { api, cellDescription, cellPd, completenessColor, percent } from './types';
 
 export function CompletenessResults({ completeness, result, imageIndex, onImage }: {
   completeness: Completeness;
@@ -33,8 +33,14 @@ export function CompletenessResults({ completeness, result, imageIndex, onImage 
         <div><dt>Cells with enough trials</dt><dd>{c.cells_ok}</dd></div>
       </dl>
       <p className="ns-micro ns-verbatim">Method: {c.method}</p>
-      <p className="ns-micro">Measured using real labelled objects from validation surveys of the selected applicability profile, injected into this survey’s own images. Saved run, not the local budget preview.</p>
-      <p className="ns-micro">Cell colour: 90% lower bound, warm = low, teal = high. Hatched = too few trials. Focus a cell for its measurements; activate it to select the image.</p>
+      <p className="ns-micro">Real objects ({c.library_source === 'audit' ? 'marked by the operator in this survey' : 'from validation surveys of the selected profile'}) injected into this survey’s own images. Saved run, not the local budget preview.</p>
+      <p className="ns-micro">Cell colour: 90% lower bound for an object anywhere in the cell (unsearched parts count as missed), warm = low, teal = high. Hatched = too few trials. Focus a cell for its measurements; activate it to select the image.</p>
+      {c.multi_pass?.available && c.multi_pass.overlap_pd_max_median != null && (
+        <div className="ns-preview-note">
+          <strong>Multi-pass:</strong> {c.multi_pass.passes} passes overlap on {c.multi_pass.overlap_km2?.toPrecision(3)} km2.
+          Median Pd lower bound there: {percent(c.multi_pass.overlap_pd_max_median)} to {percent(c.multi_pass.overlap_pd_independent_median ?? null)}. {c.multi_pass.note}
+        </div>
+      )}
       <div className="ns-completeness-images">
         {result.images.map(image => (
           <div key={image.index}>
@@ -50,7 +56,7 @@ export function CompletenessResults({ completeness, result, imageIndex, onImage 
                 return (
                   <button key={i} onClick={() => onImage(image.index)} title={label} aria-label={label}
                     className={cell?.status === 'insufficient_trials' ? 'ns-insufficient' : ''}
-                    style={{ backgroundColor: cell ? completenessColor(cell.pd_lower) : 'var(--ns-raised)' }}>
+                    style={{ backgroundColor: cell ? completenessColor(cellPd(cell) || 0) : 'var(--ns-raised)' }}>
                     <span className="ns-sr-only">{label}</span>
                   </button>
                 );

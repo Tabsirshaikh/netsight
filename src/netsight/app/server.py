@@ -356,6 +356,7 @@ def write_evidence(context: dict[str, Any], out_dir: Path, ledger_path: Path) ->
         inputs=context["inputs"],
         completeness=context.get("completeness"),
         verification_plan=context.get("verification_plan"),
+        coverage=context.get("coverage"),
     )
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     write_pack(pack, out_dir, ledger=Ledger(ledger_path))
@@ -370,6 +371,7 @@ DOWNLOADS = {
     "verification_plan.json": "application/json",
     "completeness.json": "application/json",
     "audit.json": "application/json",
+    "completeness_multipass.tif": "image/tiff",
 }
 AUDIT_FLOOR = 0.1  # candidates eligible for the random contact audit (calibration domain)
 MIN_AUDIT_DECISIONS = 20
@@ -446,6 +448,7 @@ def measure_completeness(
     profile: str = "general",
     claim_level: str = "calibrated",
     library_override: list[Any] | None = None,
+    not_searched: list[np.ndarray] | None = None,
 ) -> dict[str, Any]:
     """Inject reference targets into the survey's own images and measure Pd per image block.
 
@@ -483,6 +486,7 @@ def measure_completeness(
         passes=COMPLETENESS_PASSES,
         per_pass=COMPLETENESS_PER_PASS,
         grid=COMPLETENESS_GRID,
+        not_searched=not_searched,
     )
     ok = [c for c in cells if c.status == "ok"]
     n = sum(c.n_trials for c in cells)
@@ -531,6 +535,15 @@ def measure_completeness(
         "cells": [c.to_dict() for c in cells],
         "caveat": caveat,
     }
+
+
+def not_searched_png(mask: np.ndarray) -> bytes:
+    """Red, half-transparent overlay of the not-searched pixels (transparent elsewhere)."""
+    rgba = np.zeros((*mask.shape, 4), np.uint8)
+    rgba[mask] = (220, 60, 60, 120)
+    buffer = io.BytesIO()
+    Image.fromarray(rgba, "RGBA").save(buffer, "PNG")
+    return buffer.getvalue()
 
 
 def make_audit_plan(
@@ -613,6 +626,7 @@ def run_audit(runtime: Runtime, survey_dir: Path, body: dict[str, Any]) -> dict[
     """Score the operator's audit: calibration (random contacts), recall and completeness."""
     from netsight.detect.evaluation import iou_matrix
     from netsight.trust.audit import recall_audit
+    from netsight.trust.coverage import not_searched_mask
     from netsight.trust.injection import template_from_box
 
     saved = json.loads((survey_dir / "candidates.json").read_text("utf-8"))
@@ -673,6 +687,12 @@ def run_audit(runtime: Runtime, survey_dir: Path, body: dict[str, Any]) -> dict[
             saved["profile"],
             saved["claim_level"],
             library_override=donors,
+            not_searched=[
+                not_searched_mask(image, waterfall=bool(w))
+                for (_, image, _), w in zip(
+                    images, saved.get("waterfall", [True] * n_images), strict=True
+                )
+            ],
         )
     return json_safe(
         {
@@ -685,6 +705,16 @@ def run_audit(runtime: Runtime, survey_dir: Path, body: dict[str, Any]) -> dict[
     )
 
 
+def _pass_lower(cells: list[dict[str, Any]], image_index: int) -> float:
+    """90% one-sided lower bound on Pd from all of one image's (pass's) trials."""
+    from netsight.trust.bounds import one_sided_lower
+
+    own = [c for c in cells if c["image_index"] == image_index]
+    n = sum(int(c["n_trials"]) for c in own)
+    k = sum(int(c["n_detected"]) for c in own)
+    return one_sided_lower(k, n, alpha=0.10) if n else float("nan")
+
+
 def write_survey_exports(
     out_dir: Path,
     survey_id: str,
@@ -693,12 +723,35 @@ def write_survey_exports(
     images: list[tuple[str, np.ndarray, bytes]],
     georefs: list[Any],
     completeness: dict[str, Any] | None,
+    not_searched: list[np.ndarray] | None = None,
 ) -> dict[str, str]:
-    from netsight.app.geo_outputs import export_records, write_completeness_tiff, write_exports
+    from netsight.app.geo_outputs import (
+        export_records,
+        write_completeness_tiff,
+        write_exports,
+        write_multipass_tiff,
+    )
 
     records = export_records(contacts, survey_id, claim_level)
     files = write_exports(out_dir, records, banner=BANNER, name=f"NetSight survey {survey_id}")
     if completeness is not None and completeness.get("available"):
+        if not_searched is not None and sum(g is not None for g in georefs) >= 2:
+            passes = [
+                {
+                    "georef": georef,
+                    "shape": image.shape[:2],
+                    "grid": COMPLETENESS_GRID,
+                    "cells": [c for c in completeness["cells"] if c["image_index"] == i],
+                    "not_searched": not_searched[i],
+                    "pd_lower_pass": _pass_lower(completeness["cells"], i),
+                }
+                for i, ((_, image, _), georef) in enumerate(zip(images, georefs, strict=True))
+            ]
+            completeness["multi_pass"] = write_multipass_tiff(
+                out_dir / "completeness_multipass.tif", passes, banner=BANNER
+            )
+            if completeness["multi_pass"]["available"]:
+                files["completeness_multipass"] = "completeness_multipass.tif"
         (out_dir / "completeness.json").write_text(json.dumps(json_safe(completeness)), "utf-8")
         files["completeness"] = "completeness.json"
         for i, ((_, image, _), georef) in enumerate(zip(images, georefs, strict=True)):
@@ -771,6 +824,13 @@ def analyze_sync(
 
     all_boxes = np.concatenate([p[0] for p in predictions], axis=0)
     all_scores = np.concatenate([p[1] for p in predictions], axis=0)
+    from netsight.trust.coverage import not_searched_mask
+
+    # GeoTIFF uploads are mosaics; other uploads are waterfalls (nadir column rule applies)
+    not_searched = [
+        not_searched_mask(image, waterfall=georef is None)
+        for (_, image, _), georef in zip(images, georefs, strict=True)
+    ]
     if budget_unit == "km2":
         assert area_km2 is not None
         threshold = float(runtime.threshold(all_scores, area_km2, budget))
@@ -850,6 +910,8 @@ def analyze_sync(
                 "height": int(image.shape[0]),
                 "detections": detections,
                 "url": f"/api/packs/{survey_id}/images/{index}.png",
+                "not_searched_fraction": float(not_searched[index].mean()),
+                "not_searched_url": f"/api/packs/{survey_id}/not_searched/{index}.png",
             }
         )
 
@@ -875,7 +937,15 @@ def analyze_sync(
     }
     completeness_result = (
         measure_completeness(
-            runtime, bundle, images, predictions, threshold, tta, profile, claim.level
+            runtime,
+            bundle,
+            images,
+            predictions,
+            threshold,
+            tta,
+            profile,
+            claim.level,
+            not_searched=not_searched,
         )
         if completeness
         else None
@@ -888,17 +958,36 @@ def analyze_sync(
     context["verification_plan"] = json_safe(
         verification_plan(export_records(contacts, survey_id, claim.level))
     )
+    context["coverage"] = {
+        "not_searched_fraction": float(
+            sum(m.sum() for m in not_searched) / max(sum(m.size for m in not_searched), 1)
+        ),
+        "images": [float(m.mean()) for m in not_searched],
+    }
     out_dir = runtime.output_dir / survey_id
     out_dir.mkdir(parents=True, exist_ok=False)
     try:
-        (runtime.pack_writer or write_evidence)(context, out_dir, runtime.ledger_path)
+        # exports first: they add the multi-pass interval to the completeness result
         exports = write_survey_exports(
-            out_dir, survey_id, contacts, claim.level, images, georefs, completeness_result
+            out_dir,
+            survey_id,
+            contacts,
+            claim.level,
+            images,
+            georefs,
+            completeness_result,
+            not_searched,
         )
+        if completeness_result is not None and completeness_result.get("available"):
+            context["completeness"] = json_safe(completeness_result)
+        (runtime.pack_writer or write_evidence)(context, out_dir, runtime.ledger_path)
         previews = out_dir / "images"
         previews.mkdir(exist_ok=True)
         for index, (_, image, _) in enumerate(images):
             (previews / f"{index}.png").write_bytes(png_bytes(image))
+            (previews / f"{index}_not_searched.png").write_bytes(
+                not_searched_png(not_searched[index])
+            )
         audit_plan = make_audit_plan(survey_id, candidates, len(images), claim.level, recall)
         (out_dir / "candidates.json").write_text(
             json.dumps(
@@ -911,6 +1000,7 @@ def analyze_sync(
                         "profile": profile,
                         "tta": tta,
                         "n_images": len(images),
+                        "waterfall": [g is None for g in georefs],
                         "candidates": candidates,
                         "audit_plan": audit_plan,
                     }
@@ -1165,6 +1255,16 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
         path = pack_directory(state, survey_id) / "images" / f"{index}.png"
         if not path.is_file():
             raise HTTPException(404, "Unknown image.")
+        return FileResponse(path, media_type="image/png")
+
+    @app.get("/api/packs/{survey_id}/not_searched/{index}.png")
+    async def not_searched_overlay(survey_id: str, index: int) -> FileResponse:
+        state = await get_runtime()
+        if not 0 <= index < MAX_IMAGES:
+            raise HTTPException(404, "Unknown image.")
+        path = pack_directory(state, survey_id) / "images" / f"{index}_not_searched.png"
+        if not path.is_file():
+            raise HTTPException(404, "Overlay not found.")
         return FileResponse(path, media_type="image/png")
 
     @app.get("/api/packs/{survey_id}/{filename}")
