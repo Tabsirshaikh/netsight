@@ -41,6 +41,7 @@ class OperatingSummary:
     recall_estimate: float | None
     recall_ci: tuple[float, float] | None
     recall_source: str
+    area_km2: float | None = None  # insonified seabed searched (km2 budgets)
 
 
 def _validate_wording(value: object) -> None:
@@ -88,6 +89,11 @@ def _summary(
             f"{operating.unit} ({operating.flagged} flagged, threshold "
             f"{_number(operating.threshold)}). False alarms are a subset of the flagged "
             "contacts, so they cannot exceed this budget on this survey."
+            + (
+                f" The survey covers {_number(operating.area_km2)} km2 of insonified seabed."
+                if operating.area_km2
+                else ""
+            )
         )
         if "count" in operating.method.lower()
         else (

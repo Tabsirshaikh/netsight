@@ -198,3 +198,63 @@ def test_cors_is_local_only(setup):
     assert allowed.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
     denied = client.get("/api/health", headers={"Origin": "http://example.com"})
     assert "access-control-allow-origin" not in denied.headers
+
+
+def geotiff_bytes(pixel_m=0.5):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    buffer = io.BytesIO()
+    with rasterio.MemoryFile() as memfile:
+        with memfile.open(
+            driver="GTiff", height=32, width=40, count=1, dtype="uint8",
+            crs="EPSG:32643", transform=from_origin(500000, 2000000, pixel_m, pixel_m),
+        ) as ds:
+            ds.write(np.full((1, 32, 40), 100, np.uint8))
+        buffer.write(memfile.read())
+    return buffer.getvalue()
+
+
+def analyze_tiff(client, budget, unit):
+    return client.post(
+        "/api/analyze",
+        data={"budget": budget, "budget_unit": unit},
+        files=[("files", ("survey.tif", geotiff_bytes(), "image/tiff"))],
+    )
+
+
+@pytest.mark.parametrize("budget,flagged", [("3000", 0), ("5000", 1), ("20000", 2)])
+def test_budget_per_km2_on_georeferenced_survey(setup, budget, flagged):
+    client, _, contexts = setup
+    response = analyze_tiff(client, budget, "km2")
+    assert response.status_code == 200, response.text
+    operating = response.json()["operating"]
+    # 32 x 40 seabed pixels of 0.5 m = 320 m2 = 0.00032 km2
+    assert operating["unit"] == "km2"
+    assert operating["area_km2"] == pytest.approx(0.00032)
+    assert operating["flagged"] == flagged
+    assert contexts[0]["operating"]["unit"] == "km2"
+    assert "per km2" in contexts[0]["operating"]["recall_source"]
+    from netsight.report import OperatingSummary
+
+    OperatingSummary(**contexts[0]["operating"])  # the real pack writer accepts the context
+
+
+def test_budget_per_km2_needs_metric_georeference(setup):
+    client, _, _ = setup
+    response = analyze(client, budget="5000", budget_unit="km2")
+    assert response.status_code == 422
+    assert "GeoTIFF" in response.json()["detail"]
+
+
+def test_per_image_mode_reports_flagged_density_when_georeferenced(setup):
+    client, _, _ = setup
+    operating = analyze_tiff(client, "1", "image").json()["operating"]
+    assert operating["unit"] == "image"
+    assert operating["flagged_per_km2"] == pytest.approx(1 / 0.00032)
+    assert analyze(client, budget="1").json()["operating"]["flagged_per_km2"] is None
+
+
+def test_bad_budget_unit(setup):
+    client, _, _ = setup
+    assert analyze(client, budget="1", budget_unit="mile").status_code == 422

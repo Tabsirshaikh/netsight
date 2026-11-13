@@ -528,11 +528,25 @@ def analyze_sync(
     tta: bool,
     show_all: bool = False,
     completeness: bool = False,
+    budget_unit: str = "image",
 ) -> dict[str, Any]:
     from netsight.app.geo_outputs import contact_position, georeference
+    from netsight.trust.area_budget import equivalent_image_budget, searched_area_km2
 
     started = time.perf_counter()
     georefs = [georeference(data, name) for name, _, data in images]
+    metric = all(g is not None and g.projected for g in georefs)
+    if budget_unit == "km2" and not metric:
+        raise HTTPException(
+            422,
+            "A budget per km2 needs every image as a GeoTIFF in a projected (metre) CRS, so "
+            "the searched seabed area is known. Use the per-image budget otherwise.",
+        )
+    area_km2 = (
+        searched_area_km2([im for _, im, _ in images], [g.pixel_m for g in georefs])  # type: ignore[union-attr]
+        if metric
+        else None
+    )
     bundle = runtime.models[model_key]
     predictions: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for _, image, _ in images:
@@ -563,10 +577,22 @@ def analyze_sync(
 
     all_boxes = np.concatenate([p[0] for p in predictions], axis=0)
     all_scores = np.concatenate([p[1] for p in predictions], axis=0)
-    threshold = float(runtime.threshold(all_scores, len(images), budget))
+    if budget_unit == "km2":
+        assert area_km2 is not None
+        threshold = float(runtime.threshold(all_scores, area_km2, budget))
+        image_budget = min(equivalent_image_budget(budget, area_km2, len(images)), 3.0)
+        recall_source = (
+            "validation surveys, same count rule at the equivalent per-image budget "
+            f"({image_budget:.2f} per image; validation images have no pixel size, so this "
+            "is an approximation of the per km2 rule)"
+        )
+    else:
+        threshold = float(runtime.threshold(all_scores, len(images), budget))
+        image_budget = budget
+        recall_source = "validation surveys, same budget rule (not this survey)"
     envelope = None if profile == "general" else profile
     claim = runtime.geometry(runtime.dump, all_boxes, all_scores, envelope)
-    recall, interval = runtime.recall(runtime.dump, budget, envelope)
+    recall, interval = runtime.recall(runtime.dump, image_budget, envelope)
     survey_id = uuid.uuid4().hex
     output: list[dict[str, Any]] = []
     contacts: list[dict[str, Any]] = []
@@ -630,11 +656,12 @@ def analyze_sync(
             "method": "label-free count threshold",
             "threshold": threshold,
             "budget_fa_per_unit": budget,
-            "unit": "image",
+            "unit": budget_unit,
             "flagged": len(contacts),
+            "area_km2": area_km2,
             "recall_estimate": recall,
             "recall_ci": tuple(interval),
-            "recall_source": "validation surveys, same budget rule (not this survey)",
+            "recall_source": recall_source,
         },
         "calibration": runtime.calibration,
         "created": datetime.now(UTC).isoformat(),
@@ -686,6 +713,9 @@ def analyze_sync(
             "operating": {
                 "threshold": threshold,
                 "budget": budget,
+                "unit": budget_unit,
+                "area_km2": area_km2,
+                "flagged_per_km2": len(contacts) / area_km2 if area_km2 else None,
                 "flagged": len(contacts),
                 "recall": recall,
                 "recall_ci": interval,
@@ -797,13 +827,19 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
         tta: bool = Form(default=True),
         show_all: bool = Form(default=False),
         completeness: bool = Form(default=False),
+        budget_unit: str = Form(default="image"),
     ) -> dict:
         if model not in {"general", "ghost-gear"}:
             raise HTTPException(422, "model must be general or ghost-gear.")
         if profile not in PROFILES:
             raise HTTPException(422, "Unknown applicability profile.")
-        if not math.isfinite(budget) or budget < 0 or budget > 3:
-            raise HTTPException(422, "budget must be a finite number between 0 and 3.")
+        if budget_unit not in {"image", "km2"}:
+            raise HTTPException(422, "budget_unit must be image or km2.")
+        limit = 3 if budget_unit == "image" else 100_000
+        if not math.isfinite(budget) or budget < 0 or budget > limit:
+            raise HTTPException(
+                422, f"budget must be a finite number between 0 and {limit} per {budget_unit}."
+            )
         ids: list[str] = []
         for value in sample_ids or []:
             if value.startswith("["):
@@ -877,6 +913,7 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
                         tta,
                         show_all,
                         completeness,
+                        budget_unit,
                     )
             except HTTPException:
                 raise

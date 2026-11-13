@@ -268,3 +268,12 @@ def test_withdrawn_withholds_completeness_pd(arguments: dict) -> None:
     pack = build_pack(**arguments, **_extras())
     assert pack["completeness"]["pd"] is None and pack["completeness"]["pd_lower90"] is None
     assert "0.61" not in render_html(pack)
+
+
+def test_km2_budget_states_searched_area(arguments: dict) -> None:
+    arguments["operating"] = replace(
+        arguments["operating"], unit="km2", budget_fa_per_unit=50.0, area_km2=0.04
+    )
+    text = json.dumps(build_pack(**arguments))
+    assert "per km2" in text
+    assert "0.04 km2 of insonified seabed" in text
