@@ -1,6 +1,7 @@
 export type ModelKey = 'general' | 'ghost-gear';
 export type Profile = 'general' | 'ghostvision' | 'aquascan' | 'mine' | 'sctd' | 'subpipe';
 export type ClaimLevel = 'calibrated' | 'indicative' | 'withdrawn';
+export type BudgetUnit = 'image' | 'km2';
 export type Ellipse95 = [number, number, number];
 
 export interface Contact {
@@ -8,6 +9,7 @@ export interface Contact {
   box: [number, number, number, number];
   raw_score: number;
   probability: number;
+  audited?: boolean;
   flagged: boolean;
   evidence: Record<string, unknown>;
 }
@@ -90,6 +92,53 @@ export interface VerificationPlan {
   note: string;
 }
 
+export interface AuditPlan {
+  recommended: boolean;
+  reason: string;
+  contact_sample: string[];
+  recall_images: number[];
+  validation_recall: number;
+  /** Box and P(real) of each sampled contact; low-probability ones are not in `detections`. */
+  contacts?: { id: string; image: number; box: [number, number, number, number]; probability: number }[];
+}
+
+export interface AuditResult {
+  survey_id: string;
+  created: string;
+  calibration: {
+    decisions: number;
+    recalibrated: boolean;
+    note?: string;
+    check?: {
+      n: number;
+      predicted: number;
+      observed: number;
+      p_value: number;
+      consistent: boolean;
+    };
+    update?: { slope: number; intercept: number };
+    probabilities?: Record<string, number>;
+  };
+  recall: {
+    detected: number;
+    objects: number;
+    recall: number | null;
+    validation_recall: number;
+    p_value: number | null;
+    below_validation: boolean | null;
+    note: string;
+  };
+  completeness: {
+    available: boolean;
+    reason?: string;
+    pd?: number | null;
+    pd_lower90?: number | null;
+    trials?: number;
+    caveat?: string;
+    library_source?: string;
+  };
+}
+
 export interface Analysis {
   survey_id: string;
   model: { id: string; label: string; model_class: string };
@@ -97,11 +146,15 @@ export interface Analysis {
   operating: {
     threshold: number | null;
     budget: number;
+    unit?: BudgetUnit;
+    area_km2?: number | null;
+    flagged_per_km2?: number | null;
     flagged: number;
     recall: number | null;
     recall_ci: [number | null, number | null];
     recall_source: string;
   };
+  audit?: AuditPlan;
   images: SurveyImage[];
   timing_ms: number;
   packs: Packs;
@@ -135,6 +188,7 @@ export interface Session {
   files: File[];
   sampleIds: string[];
   completeness: boolean;
+  budgetUnit?: BudgetUnit;
 }
 
 export const profiles: { value: Profile; label: string }[] = [

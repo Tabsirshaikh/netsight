@@ -4,9 +4,10 @@ import { Viewer } from './Viewer';
 import { ContactMap } from './ContactMap';
 import { CompletenessResults, PlanResults } from './ResearchResults';
 import { CommandPalette } from './CommandPalette';
+import { AuditPanel } from './AuditPanel';
 import type { Command } from './CommandPalette';
 import { api, exportLinks, operatingPreview, percent, profiles } from './types';
-import type { Analysis, Contact, Health, ModelKey, Profile, Sample, Session } from './types';
+import type { Analysis, BudgetUnit, Contact, Health, ModelKey, Profile, Sample, Session } from './types';
 import './dashboard.css';
 
 const START = 'uv run python -m netsight.app.server --port 8000';
@@ -71,6 +72,8 @@ export default function Dashboard() {
   const [model, setModel] = useState<ModelKey>('general');
   const [profile, setProfile] = useState<Profile>('general');
   const [budget, setBudget] = useState(1);
+  const [budgetUnit, setBudgetUnit] = useState<BudgetUnit>('image');
+  const [kmBudget, setKmBudget] = useState(50);
   const [tta, setTta] = useState(true);
   const [completeness, setCompleteness] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -85,18 +88,42 @@ export default function Dashboard() {
   const [zoomRequest, setZoomRequest] = useState(0);
   const [palette, setPalette] = useState(false);
   const [contactsView, setContactsView] = useState<'contacts' | 'map'>('contacts');
+  const [audited, setAudited] = useState<{ surveyId: string; probabilities: Record<string, number> } | null>(null);
 
   const session = sessions.find(s => s.result.survey_id === activeId);
-  const result = session?.result;
+  const savedResult = session?.result;
+  const result = useMemo(() => {
+    if (!savedResult || audited?.surveyId !== savedResult.survey_id) return savedResult;
+    return {
+      ...savedResult,
+      images: savedResult.images.map(img => ({
+        ...img,
+        detections: img.detections.map(d => {
+          const probability = audited.probabilities[d.id];
+          return probability === undefined ? d : { ...d, probability, audited: true };
+        }),
+      })),
+    };
+  }, [savedResult, audited]);
   const image = result?.images[imageIndex];
-  const preview = useMemo(() => result ? operatingPreview(result, budget) : null, [result, budget]);
+  const imagePreview = budgetUnit === 'image' && (result?.operating.unit ?? 'image') === 'image';
+  const preview = useMemo(() => {
+    if (!result) return null;
+    if (imagePreview) return operatingPreview(result, budget);
+    return {
+      threshold: result.operating.threshold,
+      flags: new Set(result.images.flatMap(img => img.detections).filter(d => d.flagged).map(d => d.id)),
+    };
+  }, [result, budget, imagePreview]);
   const allContacts = useMemo(() => result?.images.flatMap(img =>
     img.detections.map(contact => ({ ...contact, imageIndex: img.index, imageName: img.name }))) || [], [result]);
   const contacts = useMemo(() => [...allContacts].sort((a, b) =>
     (descending ? -1 : 1) * (a[sort] - b[sort]) || a.id.localeCompare(b.id)), [allContacts, sort, descending]);
   const contact = allContacts.find(c => c.id === selected);
-  const localBudget = !!result && budget !== result.operating.budget;
-  const staleControls = !!result && (model !== session?.model || profile !== result.profile || tta !== result.tta || completeness !== session?.completeness);
+  const localBudget = !!result && imagePreview && budget !== result.operating.budget;
+  const staleControls = !!result && (model !== session?.model || profile !== result.profile || tta !== result.tta ||
+    completeness !== session?.completeness || budgetUnit !== (result.operating.unit ?? 'image') ||
+    (budgetUnit === 'km2' && kmBudget !== result.operating.budget));
   const currentModel = health?.models.find(m => m.key === (session?.model || model));
   const modelClass = result?.model.model_class || currentModel?.model_class || 'research';
   const hasGeoreference = result?.georeferenced.some(Boolean) ?? false;
@@ -148,7 +175,7 @@ export default function Dashboard() {
       }
       if (palette || busy || event.metaKey || event.ctrlKey || event.altKey) return;
       const element = event.target as HTMLElement;
-      if (element.closest('input, select, textarea, [contenteditable="true"], .leaflet-container')) return;
+      if (element.closest('input, select, textarea, [contenteditable="true"], .leaflet-container, .ns-audit')) return;
       if (event.key === 'j' || event.key === 'k') {
         event.preventDefault();
         if (!contacts.length) return;
@@ -203,7 +230,8 @@ export default function Dashboard() {
     sampleIds.forEach(id => form.append('sample_ids', id));
     form.set('model', model);
     form.set('profile', profile);
-    form.set('budget', String(budget));
+    form.set('budget', String(budgetUnit === 'image' ? budget : kmBudget));
+    form.set('budget_unit', budgetUnit);
     form.set('tta', String(tta));
     form.set('completeness', String(completeness));
     form.set('show_all', String(showAll));
@@ -221,8 +249,9 @@ export default function Dashboard() {
       }
       if (!alive.current) return;
       setSessions(previous => [{
-        result: analysis, urls: newUrls, model, files: [...files], sampleIds: [...sampleIds], completeness,
+        result: analysis, urls: newUrls, model, files: [...files], sampleIds: [...sampleIds], completeness, budgetUnit,
       }, ...previous]);
+      setAudited(null);
       setActiveId(analysis.survey_id);
       setContactsView('contacts');
       setImageIndex(0);
@@ -237,12 +266,16 @@ export default function Dashboard() {
   }
 
   function openSession(item: Session) {
+    if (activeId !== item.result.survey_id) setAudited(null);
     setActiveId(item.result.survey_id);
     setModel(item.model);
     setProfile(item.result.profile);
     setTta(item.result.tta);
     setCompleteness(item.completeness);
-    setBudget(item.result.operating.budget);
+    const unit = item.budgetUnit ?? item.result.operating.unit ?? 'image';
+    setBudgetUnit(unit);
+    if (unit === 'image') setBudget(item.result.operating.budget);
+    else setKmBudget(item.result.operating.budget);
     setFiles(item.files);
     setSampleIds(item.sampleIds);
     setImageIndex(0);
@@ -253,6 +286,7 @@ export default function Dashboard() {
 
   function newSurvey() {
     setActiveId(null);
+    setAudited(null);
     setFiles([]);
     setSampleIds([]);
     setSelected(null);
@@ -268,7 +302,7 @@ export default function Dashboard() {
       title: `Open sample · ${sample.name}`,
       detail: `${sample.dataset} / held-out test image`,
       run: () => {
-        setActiveId(null); setFiles([]); setSampleIds([sample.id]); setSelected(null); setError('');
+        setActiveId(null); setAudited(null); setFiles([]); setSampleIds([sample.id]); setSelected(null); setError('');
       },
     })),
     ...(['general', 'ghost-gear'] as const).map(key => ({
@@ -277,7 +311,8 @@ export default function Dashboard() {
     })),
     ...[0.25, 0.5, 1, 2, 3].map(value => ({
       id: `budget-${value}`, title: `Budget · ${value} false alarms / image`,
-      detail: 'Instant operating-point preview; re-run to save', run: () => setBudget(value),
+      detail: 'Instant operating-point preview; re-run to save',
+      run: () => { setBudgetUnit('image'); setBudget(value); },
     })),
     { id: 'new', title: 'New survey', detail: 'Clear the current input selection', run: newSurvey },
     ...(result ? [
@@ -393,12 +428,29 @@ export default function Dashboard() {
             <label>Applicability profile<select value={profile} onChange={event => setProfile(event.target.value as Profile)} disabled={busy}>
               {profiles.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select></label>
-            <label className="ns-budget">False alarms / image <output>{budget.toFixed(2)}</output>
-              <input type="range" min="0.25" max="3" step="0.25" value={budget}
-                onChange={event => setBudget(Number(event.target.value))} disabled={busy}
-                aria-label="False-alarm budget per image" aria-valuetext={`${budget} false alarms per image`} />
-              <span><small>0.25 · cautious</small><small>3 · exploratory</small></span>
-            </label>
+            <div className="ns-budget-group">
+              <div className="ns-budget-toggle" role="group" aria-label="Budget unit">
+                <button type="button" aria-pressed={budgetUnit === 'image'} disabled={busy} onClick={() => setBudgetUnit('image')}>per image</button>
+                <button type="button" aria-pressed={budgetUnit === 'km2'} disabled={busy} onClick={() => setBudgetUnit('km2')}>per km2</button>
+              </div>
+              {budgetUnit === 'image' ? (
+                <label className="ns-budget">False alarms / image <output>{budget.toFixed(2)}</output>
+                  <input type="range" min="0.25" max="3" step="0.25" value={budget}
+                    onChange={event => setBudget(Number(event.target.value))} disabled={busy}
+                    aria-label="False-alarm budget per image" aria-valuetext={`${budget} false alarms per image`} />
+                  <span><small>0.25 · cautious</small><small>3 · exploratory</small></span>
+                </label>
+              ) : (
+                <label className="ns-budget">False alarms / km2
+                  <input type="number" min="0" max="100000" step="1" value={kmBudget} disabled={busy}
+                    onChange={event => {
+                      const value = event.target.valueAsNumber;
+                      if (Number.isFinite(value)) setKmBudget(Math.max(0, Math.min(100000, value)));
+                    }} />
+                  <small>Needs GeoTIFFs in a metric CRS.</small>
+                </label>
+              )}
+            </div>
             <label className="ns-tta"><input type="checkbox" checked={tta} onChange={event => setTta(event.target.checked)} disabled={busy} />
               <span>Flip TTA<small>More views</small></span></label>
             <label className="ns-tta ns-completeness-control">
@@ -417,7 +469,7 @@ export default function Dashboard() {
           {(localBudget || staleControls) && result && (
             <div className="ns-preview-note" role="status">
               {localBudget ? `Local budget preview · saved run uses ${result.operating.budget.toFixed(2)} FA/image. ` : ''}
-              {staleControls ? 'Model, profile, TTA or completeness changes apply on the next run. ' : ''}
+              {staleControls ? 'Control changes apply on the next run. ' : ''}
               Re-run to update evidence, claim, validation recall, completeness, map positions and downloads.
             </div>
           )}
@@ -447,6 +499,10 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+          )}
+          {result?.audit && (
+            <AuditPanel key={result.survey_id} result={result} plan={result.audit} disabled={busy}
+              onProbabilities={probabilities => setAudited({ surveyId: result.survey_id, probabilities })} />
           )}
           <footer className="ns-workspace-footer">
             <span>⌁ NETSIGHT / RESEARCH DETECTOR</span>
@@ -478,15 +534,18 @@ export default function Dashboard() {
                 <div className="ns-section-title"><h3>Operating summary</h3><span>{localBudget ? 'PREVIEW' : 'SAVED RUN'}</span></div>
                 <div className="ns-stat-grid">
                   <div><span>Flagged contacts</span><strong>{preview?.flags.size ?? 0}<small> / {allContacts.length}</small></strong></div>
-                  <div><span>Budget / image</span><strong>{budget.toFixed(2)}</strong></div>
+                  <div><span>Budget / {(result.operating.unit ?? 'image') === 'km2' ? 'km2' : 'image'}</span>
+                    <strong>{(imagePreview ? budget : result.operating.budget).toFixed(2)}</strong></div>
                 </div>
                 <dl className="ns-summary-list">
                   <div><dt>Raw-score threshold</dt><dd>{preview?.threshold == null ? '∞ · no flags' : preview.threshold.toFixed(4)}</dd></div>
                   <div><dt>Validation recall{localBudget ? ' · saved budget' : ''}</dt><dd>{percent(result.operating.recall)}</dd></div>
                   <div><dt>Recall interval</dt><dd>{percent(result.operating.recall_ci[0])}–{percent(result.operating.recall_ci[1])}</dd></div>
                 </dl>
+                {result.operating.area_km2 != null && <p className="ns-micro">Searched seabed: {result.operating.area_km2.toPrecision(3)} km2</p>}
+                {result.operating.flagged_per_km2 != null && <p className="ns-micro">Flagged / km2: {result.operating.flagged_per_km2.toPrecision(3)}</p>}
                 <p className="ns-micro">Recall: {result.operating.recall_source}. {localBudget && 'Re-run for a recall estimate at the preview budget.'}</p>
-                <p className="ns-micro">Count rule: top floor(budget × images) by raw score; boundary ties are included. The budget is not a measured false-alarm rate for this survey.</p>
+                {(result.operating.unit ?? 'image') === 'image' && <p className="ns-micro">Count rule: top floor(budget × images) by raw score; boundary ties are included. The budget is not a measured false-alarm rate for this survey.</p>}
               </section>
               {result.completeness && <CompletenessResults completeness={result.completeness} result={result} imageIndex={imageIndex} onImage={chooseImage} />}
               <PlanResults url={result.packs.plan} onSelect={chooseContact} />
@@ -502,7 +561,7 @@ export default function Dashboard() {
                         aria-valuenow={contact.probability * 100}
                         style={{ background: `conic-gradient(#6de2c3 ${contact.probability * 360}deg, #18303b 0)` }}>
                         <span>{percent(contact.probability)}</span>
-                      </div><div><strong>Contact probability</strong><p>Calibrated on<br />validation surveys</p></div>
+                      </div><div><strong>Contact probability</strong>{contact.audited && <small className="ns-audited-tag">audited</small>}<p>{contact.audited ? 'Updated by operator audit' : <>Calibrated on<br />validation surveys</>}</p></div>
                     </div>
                     <dl className="ns-summary-list">
                       <div><dt>Raw score</dt><dd>{contact.raw_score.toFixed(4)}</dd></div>
@@ -535,7 +594,7 @@ export default function Dashboard() {
                             onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); chooseContact(item.id); setZoomRequest(n => n + 1); } }}>
                             <span className={preview?.flags.has(item.id) ? 'ns-table-flag flagged' : 'ns-table-flag'} aria-label={preview?.flags.has(item.id) ? 'Flagged' : 'Below threshold'} />
                             {item.id}<small> / {String(item.imageIndex + 1).padStart(2, '0')}</small>
-                          </button></td><td>{percent(item.probability)}</td><td>{item.raw_score.toFixed(3)}</td>
+                          </button></td><td>{percent(item.probability)}{item.audited && <small className="ns-audited-tag">audited</small>}</td><td>{item.raw_score.toFixed(3)}</td>
                         </tr>
                       ))}</tbody>
                     </table>

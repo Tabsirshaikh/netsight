@@ -1,0 +1,205 @@
+.ns-budget-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ns-budget-toggle, .ns-audit-decisions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ns-budget-toggle button[aria-pressed="true"],
+.ns-audit-decisions button[aria-pressed="true"] {
+  color: var(--ns-green);
+  border-color: var(--ns-green);
+  background: var(--ns-raised);
+}
+.ns-budget-group input[type="number"] {
+  width: 130px;
+  padding: 7px;
+  color: var(--ns-text);
+  background: var(--ns-panel);
+  border: 1px solid var(--ns-border);
+  border-radius: 5px;
+}
+.ns-audited-tag {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 4px;
+  border: 1px solid var(--ns-green);
+  border-radius: 4px;
+  color: var(--ns-green);
+  font-size: 9px;
+  font-weight: normal;
+}
+.ns-audit {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid var(--ns-border);
+  border-radius: 8px;
+  background: var(--ns-panel);
+  min-width: 0;
+}
+.ns-audit h2 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.ns-audit h3 {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.ns-audit h4 {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.ns-audit p + p {
+  margin-top: 8px;
+}
+.ns-audit-notice {
+  padding: 12px;
+  border-left: 3px solid var(--ns-amber);
+  color: var(--ns-amber);
+  background: var(--ns-raised);
+}
+.ns-audit-part {
+  margin-top: 22px;
+}
+.ns-audit-samples {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.ns-audit-samples > li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ns-border);
+}
+.ns-audit-crop {
+  width: 80px;
+  height: 80px;
+  flex: 0 0 80px;
+  background-color: var(--ns-bg);
+  background-repeat: no-repeat;
+  border: 1px solid var(--ns-border);
+  border-radius: 5px;
+}
+.ns-audit-contact-info {
+  display: flex;
+  flex: 1 1 130px;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.ns-audit-contact-info > small {
+  color: var(--ns-muted);
+}
+.ns-audit-image {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--ns-raised);
+  border: 1px solid var(--ns-border);
+  border-radius: 6px;
+}
+.ns-audit-image-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--ns-bg);
+}
+.ns-audit-image-stage > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ns-audit-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.ns-audit-overlay.disabled {
+  cursor: default;
+}
+.ns-audit-box {
+  fill: color-mix(in srgb, var(--ns-green) 12%, transparent);
+  stroke: var(--ns-green);
+  stroke-width: 2px;
+  pointer-events: none;
+}
+.ns-audit-box-faint {
+  fill: none;
+  stroke: var(--ns-text);
+  stroke-dasharray: 5 4;
+  opacity: .4;
+}
+.ns-audit-box-list {
+  padding-left: 22px;
+}
+.ns-audit-box-list li {
+  margin-top: 6px;
+}
+.ns-audit-box-list button {
+  margin-left: 8px;
+}
+.ns-audit details {
+  margin-top: 10px;
+}
+.ns-audit summary {
+  cursor: pointer;
+}
+.ns-audit-coordinates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ns-audit-coordinates label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ns-audit-coordinates input {
+  width: 85px;
+  padding: 6px;
+  color: var(--ns-text);
+  background: var(--ns-panel);
+  border: 1px solid var(--ns-border);
+  border-radius: 4px;
+}
+.ns-audit-submit {
+  margin-top: 16px;
+}
+.ns-audit-error {
+  margin-top: 12px !important;
+  color: var(--ns-amber);
+}
+.ns-audit-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.ns-audit-result-card {
+  padding: 14px;
+  border: 1px solid var(--ns-border);
+  border-radius: 6px;
+  background: var(--ns-raised);
+  overflow-wrap: anywhere;
+}
+.ns-audit-warning {
+  color: var(--ns-amber);
+}
+.ns-audit-download {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--ns-green) !important;
+  text-decoration: underline !important;
+}

@@ -555,6 +555,10 @@ def make_audit_plan(
             "object in the listed images tests recall on this survey."
         ),
         "contact_sample": [candidates[i]["id"] for i in picks],
+        # boxes and P(real) of the sample: low-probability candidates are hidden in the UI
+        "contacts": [
+            {k: candidates[i][k] for k in ("id", "image", "box", "probability")} for i in picks
+        ],
         "recall_images": images,
         "validation_recall": recall,
     }

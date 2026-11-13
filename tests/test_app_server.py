@@ -282,6 +282,8 @@ def test_analysis_returns_random_audit_plan(setup):
     ids = {d["id"] for im in result["images"] for d in im["detections"]}
     assert set(audit["contact_sample"]) <= ids and len(audit["contact_sample"]) == 6
     assert audit["recall_images"] == [0, 1, 2]
+    assert [c["id"] for c in audit["contacts"]] == audit["contact_sample"]
+    assert set(audit["contacts"][0]) == {"id", "image", "box", "probability"}
     assert audit["validation_recall"] == 0.75
 
 
