@@ -375,3 +375,13 @@
 
 .ns-not-searched-legend { margin-left: .8rem; }
 .ns-not-searched-legend b { display: inline-block; width: .8rem; height: .55rem; margin-right: .3rem; background: rgba(220, 60, 60, .55); vertical-align: middle; }
+
+/* Scrolling panels contain their absolutely positioned children (screen-reader text, check
+   badges). Without this, an off-screen helper inside a long panel attaches to <body> and
+   stretches the page into an empty scroll area below the dashboard. */
+.ns-dashboard .ns-rail,
+.ns-dashboard .ns-inspector,
+.ns-dashboard .ns-workspace,
+.ns-dashboard .ns-survey-list,
+.ns-dashboard .ns-file-list,
+.ns-dashboard .ns-layout > * { position: relative; }
