@@ -107,13 +107,16 @@ def _read_packets(p: Path, gen: Iterator) -> SonarRecord:
     n_sonar = int(fh.NumberOfSonarChannels)
     # pyxtf filters sonar_info to sonar-type channels, so it can be shorter than n_sonar
     channel_types = [int(ci.TypeOfChannel) for ci in fh.sonar_info]
-    try:
-        port_i = channel_types.index(PORT_CHANNEL_TYPE)
-        stbd_i = channel_types.index(STBD_CHANNEL_TYPE)
-    except ValueError as exc:
+    port_i = channel_types.index(PORT_CHANNEL_TYPE) if PORT_CHANNEL_TYPE in channel_types else None
+    stbd_i = channel_types.index(STBD_CHANNEL_TYPE) if STBD_CHANNEL_TYPE in channel_types else None
+    if port_i is None and stbd_i is None:
         raise XtfFormatError(
-            f"no port/starboard side-scan channel pair in {p.name} (channel types {channel_types})"
-        ) from exc
+            f"no port or starboard side-scan channel in {p.name} (channel types {channel_types})"
+        )
+    # Single-sided records (one channel only): the missing side is NaN = not searched.
+    missing_side = "port" if port_i is None else "starboard" if stbd_i is None else None
+    port_i = stbd_i if port_i is None else port_i
+    stbd_i = port_i if stbd_i is None else stbd_i
     kind = CoordKind.LATLON if int(fh.NavUnits) == LATLON_NAV_UNITS else CoordKind.PROJECTED
     frequency = float(fh.sonar_info[port_i].Frequency) or None
     model = fh.SonarName.decode("ascii", errors="replace").strip("\x00 ") or None
@@ -126,8 +129,10 @@ def _read_packets(p: Path, gen: Iterator) -> SonarRecord:
             notes["ping skipped: missing side-scan channel data"] += 1
             continue
         if not (
-            _channel_type(fh, chans[port_i]) == PORT_CHANNEL_TYPE
-            and _channel_type(fh, chans[stbd_i]) == STBD_CHANNEL_TYPE
+            (missing_side == "port" or _channel_type(fh, chans[port_i]) == PORT_CHANNEL_TYPE)
+            and (
+                missing_side == "starboard" or _channel_type(fh, chans[stbd_i]) == STBD_CHANNEL_TYPE
+            )
         ):
             notes["ping skipped: channel identity mismatch"] += 1
             continue
@@ -136,7 +141,7 @@ def _read_packets(p: Path, gen: Iterator) -> SonarRecord:
         except ValueError:
             notes["ping skipped: invalid timestamp"] += 1
             continue
-        slant = float(chans[port_i].SlantRange)
+        slant = float(chans[stbd_i if missing_side == "port" else port_i].SlantRange)
         if not slant > 0:
             notes["ping skipped: non-positive slant range"] += 1
             continue
@@ -146,6 +151,12 @@ def _read_packets(p: Path, gen: Iterator) -> SonarRecord:
             port *= np.float32(2.0 ** -int(chans[port_i].Weight))
         if int(chans[stbd_i].Weight):
             stbd *= np.float32(2.0 ** -int(chans[stbd_i].Weight))
+        if missing_side == "port":
+            port = np.full_like(stbd, np.nan)
+            notes["single-sided record: port channel absent (NaN, not searched)"] += 1
+        elif missing_side == "starboard":
+            stbd = np.full_like(port, np.nan)
+            notes["single-sided record: starboard channel absent (NaN, not searched)"] += 1
         if port.size != stbd.size:
             n = min(port.size, stbd.size)
             port, stbd = port[:n], stbd[:n]

@@ -86,9 +86,17 @@ def test_mixed_channel_file_never_raises_bare_error_or_swaps_channels(tmp_path, 
         read_xtf(f)
 
 
-@pytest.mark.parametrize("channel_types", [(1,), (1, 0)])
-def test_port_only_file_is_rejected(tmp_path, channel_types):
-    f = write_synthetic_xtf(tmp_path / "port.xtf", n_pings=2, channel_types=channel_types)
+def test_port_only_file_reads_with_starboard_not_searched(tmp_path):
+    """Single-sided records are real (some AUVs record one side): the missing side is NaN."""
+    f = write_synthetic_xtf(tmp_path / "port.xtf", n_pings=2, channel_types=(1,))
+    rec = read_xtf(f)
+    assert rec.n_pings == 2
+    assert all(np.isnan(p.stbd).all() and np.isfinite(p.port).all() for p in rec.pings)
+    assert any("single-sided" in n for n in rec.provenance.notes)
+
+
+def test_file_without_side_scan_pair_is_rejected(tmp_path):
+    f = write_synthetic_xtf(tmp_path / "port.xtf", n_pings=2, channel_types=(1, 0))
     with pytest.raises(XtfFormatError):
         read_xtf(f)
 
