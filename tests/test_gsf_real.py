@@ -1,6 +1,7 @@
 """Regression test on a real NOAA GSF file (CC_BlockA03, Reson 7125, public domain): the
 header records and pings 0, 124 and 125 of 1A03-FILL-003.gsf.mb121 from NCEI
-(data.ngdc.noaa.gov/platforms/ocean/ships/quicksilver/CC_BlockA03_quicksilver/...). The reader was first
+(data.ngdc.noaa.gov/platforms/ocean/ships/quicksilver/CC_BlockA03_quicksilver/...).
+The reader was first
 written against synthetic files only and could not read real GSF (scale factors are
 subrecord 100, not 21)."""
 
