@@ -369,7 +369,11 @@ DOWNLOADS = {
     "contacts.csv": "text/csv",
     "verification_plan.json": "application/json",
     "completeness.json": "application/json",
+    "audit.json": "application/json",
 }
+AUDIT_FLOOR = 0.1  # candidates eligible for the random contact audit (calibration domain)
+MIN_AUDIT_DECISIONS = 20
+MIN_AUDIT_DONORS = 5
 COMPLETENESS_GRID = (3, 3)
 COMPLETENESS_PASSES = 3
 COMPLETENESS_PER_PASS = 6
@@ -380,6 +384,25 @@ BANNER = (
 
 
 TARGETS_PER_DATASET = 40
+# Real, compact objects only: synthetic sets do not transfer, and pipelines / wrecks failed the
+# transplant realism check (Pd 0.2-0.4 against real recall 0.72-0.76).
+LIBRARY_DATASETS = ("mine", "ghostvision", "aquascan")
+EXTENDED_OBJECT_PROFILES = {"subpipe", "sctd"}
+
+
+def completeness_refusal(profile: str, library_override: list[Any] | None) -> str | None:
+    """Why completeness is not measured for this request, or None when it is."""
+    if profile in EXTENDED_OBJECT_PROFILES:
+        return (
+            "not measured for pipelines and wrecks: pasted extended objects lose their context "
+            "and read far below real recall on held-out surveys (0.2-0.4 vs 0.72-0.76)"
+        )
+    if library_override is None and profile == "general":
+        return (
+            "choose a data profile, or run the audit (mark every object in the listed images): "
+            "objects mixed from other surveys read 0.1-0.5 below real recall"
+        )
+    return None
 
 
 def build_target_library(val_splits: dict, pixels: Any) -> dict[str, list[Any]]:
@@ -390,6 +413,8 @@ def build_target_library(val_splits: dict, pixels: Any) -> dict[str, list[Any]]:
     rng = np.random.default_rng(0)
     library: dict[str, list[Any]] = {}
     for dataset, samples in val_splits.items():
+        if dataset not in LIBRARY_DATASETS:
+            continue
         boxes = [
             (s, b)
             for s in samples
@@ -420,17 +445,21 @@ def measure_completeness(
     tta: bool,
     profile: str = "general",
     claim_level: str = "calibrated",
+    library_override: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Inject reference targets into the survey's own images and measure Pd per image block."""
+    """Inject reference targets into the survey's own images and measure Pd per image block.
+
+    ``library_override``: objects the operator marked in this survey (audit). Same-survey donors
+    matched real recall within ~0.1 on held-out surveys; donors from other surveys were off by
+    ~0.2 whatever the correction (research 2026-11-13)."""
     from netsight.trust.bounds import one_sided_lower
     from netsight.trust.injection import completeness_map
 
-    key = profile
-    library = (
-        [t for items in runtime.targets.values() for t in items]
-        if key == "general"
-        else list(runtime.targets.get(key, []))
-    )
+    refusal = completeness_refusal(profile, library_override)
+    if refusal:
+        return {"available": False, "reason": refusal}
+    audit = library_override is not None
+    library = list(library_override) if audit else list(runtime.targets.get(profile, []))
     if not library:
         return {"available": False, "reason": "no target library for this profile"}
 
@@ -458,26 +487,39 @@ def measure_completeness(
     ok = [c for c in cells if c.status == "ok"]
     n = sum(c.n_trials for c in cells)
     k = sum(c.n_detected for c in cells)
-    caveat = (
-        "Pd applies to objects like those in the chosen profile's surveys, at their own "
-        "pixel size; cells with fewer than 5 trials are marked insufficient, not "
-        "estimated. On held-out surveys transplant Pd agreed with real recall on 4 of 6 "
-        "datasets and was pessimistic on SubPipe and SCTD."
-    )
+    if audit:
+        caveat = (
+            "Pd for objects like the ones the operator marked in this survey, pasted onto its "
+            "own seabed. On held-out surveys this matched real recall in 10 of 14 audits "
+            "(AquaScan, GhostVision, mine); cells with fewer than 5 trials are marked "
+            "insufficient, not estimated."
+        )
+    else:
+        caveat = (
+            "PESSIMISTIC ESTIMATE: objects from other surveys of this profile lose "
+            "detectability when pasted here; on held-out surveys this read 0.03-0.3 below real "
+            "recall. Run the audit for a measured value. Cells with fewer than 5 trials are "
+            "marked insufficient, not estimated."
+        )
     if claim_level != "calibrated":
         caveat = (
-            f"INDICATIVE ONLY: this survey's geometry differs from the training data (claim "
-            f"level {claim_level}), so the injected objects may not resemble this survey's "
-            "objects and this Pd can be far too high. " + caveat
+            f"UPPER BOUND ONLY: the applicability gate did not confirm this survey (claim level "
+            f"{claim_level}); on the other-sensor recording audit-object Pd read about 0.2 above "
+            "real recall. " + caveat
         )
     return {
         "available": True,
         "claim_level": claim_level,
         "method": (
-            "real labelled objects from validation surveys (profile: "
-            f"{profile}) transplanted onto the seabed of this survey, detected at this "
-            "survey's operating threshold"
+            (
+                "objects the operator marked in this survey (audit)"
+                if audit
+                else f"real labelled objects from validation surveys (profile: {profile})"
+            )
+            + " transplanted onto the seabed of this survey, detected at this survey's "
+            "operating threshold"
         ),
+        "library_source": "audit" if audit else "validation",
         "library_size": len(library),
         "profile": profile,
         "grid": list(COMPLETENESS_GRID),
@@ -489,6 +531,154 @@ def measure_completeness(
         "cells": [c.to_dict() for c in cells],
         "caveat": caveat,
     }
+
+
+def make_audit_plan(
+    survey_id: str, candidates: list[dict[str, Any]], n_images: int, level: str, recall: float
+) -> dict[str, Any]:
+    """Random contact sample and random images for the operator audits (seeded by survey)."""
+    from netsight.trust.audit import CONTACT_AUDIT_SIZE, RECALL_AUDIT_IMAGES, sample_audit
+
+    rng = np.random.default_rng(int(survey_id[:12], 16))
+    picks = sample_audit(np.array([c["raw_score"] for c in candidates]), CONTACT_AUDIT_SIZE, rng)
+    images = sorted(
+        int(i) for i in rng.choice(n_images, min(RECALL_AUDIT_IMAGES, n_images), replace=False)
+    )
+    return {
+        "recommended": level != "calibrated",
+        "reason": (
+            "The applicability gate did not confirm this survey: confirm or reject the random "
+            "contact sample to recalibrate P(real), and mark every object in the listed images "
+            "to test recall and measure completeness with this survey's own objects."
+            if level != "calibrated"
+            else "Optional: the gate cannot see recall drops within one sensor; marking every "
+            "object in the listed images tests recall on this survey."
+        ),
+        "contact_sample": [candidates[i]["id"] for i in picks],
+        "recall_images": images,
+        "validation_recall": recall,
+    }
+
+
+def _check_audit_body(saved: dict[str, Any], body: dict[str, Any]) -> None:
+    by_id = {c["id"] for c in saved["candidates"]}
+    for d in body.get("contacts", []):
+        if d.get("id") not in by_id or not isinstance(d.get("real"), bool):
+            raise HTTPException(422, f"Unknown contact id or missing real/false: {d.get('id')}.")
+    for im in body.get("images", []):
+        index = im.get("index")
+        if not isinstance(index, int) or not 0 <= index < int(saved["n_images"]):
+            raise HTTPException(422, f"Image index {index} is not in this survey.")
+        for b in im.get("objects", []):
+            ok = (
+                isinstance(b, list)
+                and len(b) == 4
+                and all(isinstance(v, int | float) and math.isfinite(v) for v in b)
+                and b[2] > b[0]
+                and b[3] > b[1]
+            )
+            if not ok:
+                raise HTTPException(422, "Object boxes must be [x0, y0, x1, y1] with x1>x0, y1>y0.")
+
+
+def _audit_calibration(saved: dict[str, Any], decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    from netsight.trust.audit import calibration_check, fit_recalibration
+
+    out: dict[str, Any] = {"decisions": len(decisions), "recalibrated": False}
+    if len(decisions) < MIN_AUDIT_DECISIONS:
+        out["note"] = (
+            f"Recalibration needs at least {MIN_AUDIT_DECISIONS} random contact decisions."
+        )
+        return out
+    by_id = {c["id"]: c for c in saved["candidates"]}
+    p = np.array([by_id[d["id"]]["probability"] for d in decisions])
+    y = np.array([1.0 if d["real"] else 0.0 for d in decisions])
+    rec = fit_recalibration(p, y)
+    fixed = rec.apply(np.array([c["probability"] for c in saved["candidates"]]))
+    out.update(
+        recalibrated=True,
+        check=calibration_check(p, y),
+        update=rec.to_dict(),
+        probabilities={c["id"]: float(q) for c, q in zip(saved["candidates"], fixed, strict=True)},
+        note="P(real) updated from this survey's random contact audit (logit slope, intercept).",
+    )
+    return out
+
+
+def run_audit(runtime: Runtime, survey_dir: Path, body: dict[str, Any]) -> dict[str, Any]:
+    """Score the operator's audit: calibration (random contacts), recall and completeness."""
+    from netsight.detect.evaluation import iou_matrix
+    from netsight.trust.audit import recall_audit
+    from netsight.trust.injection import template_from_box
+
+    saved = json.loads((survey_dir / "candidates.json").read_text("utf-8"))
+    _check_audit_body(saved, body)
+    n_images = int(saved["n_images"])
+    threshold = math.inf if saved["threshold"] is None else float(saved["threshold"])
+
+    def pixels(i: int) -> np.ndarray:
+        return np.asarray(Image.open(survey_dir / "images" / f"{i}.png").convert("L"))
+
+    detected = objects = 0
+    donors: list[Any] = []
+    for im in body.get("images", []):
+        gt = np.asarray(im.get("objects", []), float).reshape(-1, 4)
+        if not len(gt):
+            continue
+        objects += len(gt)
+        flagged = [
+            c["box"]
+            for c in saved["candidates"]
+            if c["image"] == im["index"] and c["raw_score"] >= threshold
+        ]
+        if flagged:
+            detected += int((iou_matrix(gt, np.asarray(flagged, float)).max(axis=1) >= 0.5).sum())
+        image = pixels(im["index"])
+        for b in gt:
+            if b[2] - b[0] >= 6 and b[3] - b[1] >= 6:
+                try:
+                    donors.append(template_from_box(image, b, source="audit"))
+                except ValueError:
+                    continue
+
+    completeness: dict[str, Any] = {"available": False}
+    if len(donors) < MIN_AUDIT_DONORS:
+        completeness["reason"] = (
+            f"needs at least {MIN_AUDIT_DONORS} marked objects of 6 px or more "
+            f"({len(donors)} given)"
+        )
+    else:
+        images = [(f"{i}.png", pixels(i), b"") for i in range(n_images)]
+        predictions = []
+        for i in range(n_images):
+            cs = [c for c in saved["candidates"] if c["image"] == i]
+            predictions.append(
+                (
+                    np.asarray([c["box"] for c in cs], float).reshape(-1, 4),
+                    np.asarray([c["raw_score"] for c in cs], float),
+                    np.asarray([c["probability"] for c in cs], float),
+                )
+            )
+        completeness = measure_completeness(
+            runtime,
+            runtime.models[saved["model"]],
+            images,
+            predictions,
+            threshold,
+            bool(saved["tta"]),
+            saved["profile"],
+            saved["claim_level"],
+            library_override=donors,
+        )
+    return json_safe(
+        {
+            "survey_id": survey_dir.name,
+            "created": datetime.now(UTC).isoformat(),
+            "calibration": _audit_calibration(saved, body.get("contacts", [])),
+            "recall": recall_audit(detected, objects, float(saved["validation_recall"])),
+            "completeness": completeness,
+        }
+    )
 
 
 def write_survey_exports(
@@ -598,6 +788,7 @@ def analyze_sync(
     contacts: list[dict[str, Any]] = []
     contact_number = 0
     hidden_candidates = 0
+    candidates: list[dict[str, Any]] = []
     for index, ((name, image, _), (boxes, scores, probabilities)) in enumerate(
         zip(images, predictions, strict=True)
     ):
@@ -606,6 +797,17 @@ def analyze_sync(
             contact_number += 1
             contact_id = f"c{contact_number:05d}"
             flagged = bool(score >= threshold)
+            if score >= AUDIT_FLOOR:
+                candidates.append(
+                    {
+                        "id": contact_id,
+                        "image": index,
+                        "box": [float(x) for x in box],
+                        "raw_score": float(score),
+                        "probability": float(probability),
+                        "flagged": flagged,
+                    }
+                )
             if not show_all and not flagged and float(probability) < MIN_SHOWN_PROBABILITY:
                 hidden_candidates += 1  # near-zero candidates: used for the threshold, not shown
                 continue
@@ -693,6 +895,25 @@ def analyze_sync(
         previews.mkdir(exist_ok=True)
         for index, (_, image, _) in enumerate(images):
             (previews / f"{index}.png").write_bytes(png_bytes(image))
+        audit_plan = make_audit_plan(survey_id, candidates, len(images), claim.level, recall)
+        (out_dir / "candidates.json").write_text(
+            json.dumps(
+                json_safe(
+                    {
+                        "threshold": threshold,
+                        "validation_recall": recall,
+                        "claim_level": claim.level,
+                        "model": model_key,
+                        "profile": profile,
+                        "tta": tta,
+                        "n_images": len(images),
+                        "candidates": candidates,
+                        "audit_plan": audit_plan,
+                    }
+                )
+            ),
+            encoding="utf-8",
+        )
     except Exception:
         shutil.rmtree(out_dir, ignore_errors=True)
         raise
@@ -724,6 +945,7 @@ def analyze_sync(
             "images": output,
             "timing_ms": round((time.perf_counter() - started) * 1000, 1),
             "hidden_candidates": hidden_candidates,
+            "audit": audit_plan,
             "packs": {
                 "json": f"/api/packs/{survey_id}/evidence_pack.json",
                 "html": f"/api/packs/{survey_id}/evidence_pack.html",
@@ -953,6 +1175,34 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             media_type=DOWNLOADS.get(filename, "image/tiff"),
             filename=None if filename.endswith(".html") else filename,
         )
+
+    @app.post("/api/packs/{survey_id}/audit")
+    async def audit(survey_id: str, body: dict[str, Any]) -> dict:
+        """Operator audit of a saved survey: random contacts, fully marked images."""
+        state = await get_runtime()
+        directory = pack_directory(state, survey_id)
+        if not (directory / "candidates.json").is_file():
+            raise HTTPException(404, "Unknown survey.")
+        if not isinstance(body.get("contacts", []), list) or not isinstance(
+            body.get("images", []), list
+        ):
+            raise HTTPException(422, "contacts and images must be lists.")
+        async with lock:
+            try:
+                with anyio.CancelScope(shield=True):
+                    result = await anyio.to_thread.run_sync(run_audit, state, directory, body)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                LOG.exception("Audit failed")
+                raise HTTPException(500, "Audit failed. Check the API terminal.") from exc
+        (directory / "audit.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        from netsight.trust.provenance import Ledger
+
+        state.ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256((directory / "audit.json").read_bytes()).hexdigest()
+        Ledger(state.ledger_path).append("review", {"survey_id": survey_id, "sha256": digest})
+        return result
 
     return app
 

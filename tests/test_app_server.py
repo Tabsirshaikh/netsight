@@ -44,9 +44,10 @@ def setup(tmp_path):
         (directory / "evidence_pack.html").write_text(
             "<!doctype html><title>Evidence</title>", encoding="utf-8"
         )
+        from netsight.trust.provenance import Ledger
+
         ledger.parent.mkdir(parents=True, exist_ok=True)
-        with ledger.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"survey_id": context["survey_id"]}) + "\n")
+        Ledger(ledger).append("report", {"survey_id": context["survey_id"]})
 
     state = Runtime(
         device="cpu",
@@ -207,8 +208,13 @@ def geotiff_bytes(pixel_m=0.5):
     buffer = io.BytesIO()
     with rasterio.MemoryFile() as memfile:
         with memfile.open(
-            driver="GTiff", height=32, width=40, count=1, dtype="uint8",
-            crs="EPSG:32643", transform=from_origin(500000, 2000000, pixel_m, pixel_m),
+            driver="GTiff",
+            height=32,
+            width=40,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:32643",
+            transform=from_origin(500000, 2000000, pixel_m, pixel_m),
         ) as ds:
             ds.write(np.full((1, 32, 40), 100, np.uint8))
         buffer.write(memfile.read())
@@ -258,3 +264,104 @@ def test_per_image_mode_reports_flagged_density_when_georeferenced(setup):
 def test_bad_budget_unit(setup):
     client, _, _ = setup
     assert analyze(client, budget="1", budget_unit="mile").status_code == 422
+
+
+def analyze_many(client, n):
+    return client.post(
+        "/api/analyze",
+        data={"budget": "1", "tta": "false"},
+        files=[("files", (f"s{i}.png", image_bytes(), "image/png")) for i in range(n)],
+    ).json()
+
+
+def test_analysis_returns_random_audit_plan(setup):
+    client, _, _ = setup
+    result = analyze_many(client, 3)
+    audit = result["audit"]
+    assert audit["recommended"] is True  # fake gate says indicative
+    ids = {d["id"] for im in result["images"] for d in im["detections"]}
+    assert set(audit["contact_sample"]) <= ids and len(audit["contact_sample"]) == 6
+    assert audit["recall_images"] == [0, 1, 2]
+    assert audit["validation_recall"] == 0.75
+
+
+def test_audit_reports_recall_and_needs_enough_decisions(setup):
+    client, _, _ = setup
+    result = analyze_many(client, 1)
+    ids = [d["id"] for d in result["images"][0]["detections"]]
+    body = {
+        "contacts": [{"id": ids[0], "real": True}, {"id": ids[1], "real": False}],
+        "images": [{"index": 0, "objects": [[2, 2, 15, 14], [30, 2, 38, 10]]}],
+    }
+    response = client.post(f"/api/packs/{result['survey_id']}/audit", json=body)
+    assert response.status_code == 200, response.text
+    audit = response.json()
+    assert audit["recall"]["detected"] == 1 and audit["recall"]["objects"] == 2
+    assert audit["recall"]["below_validation"] is None  # too few objects to test
+    assert audit["calibration"]["recalibrated"] is False
+    assert "at least 20" in audit["calibration"]["note"]
+    assert audit["completeness"]["available"] is False
+    saved = client.get(f"/api/packs/{result['survey_id']}/audit.json")
+    assert saved.status_code == 200 and saved.json()["recall"]["objects"] == 2
+
+
+def test_audit_recalibrates_probabilities(setup):
+    client, _, _ = setup
+    result = analyze_many(client, 12)
+    ids = [d["id"] for im in result["images"] for d in im["detections"]]
+    body = {"contacts": [{"id": i, "real": True} for i in ids], "images": []}
+    audit = client.post(f"/api/packs/{result['survey_id']}/audit", json=body).json()
+    cal = audit["calibration"]
+    assert cal["recalibrated"] is True and cal["check"]["consistent"] is False
+    before = {d["id"]: d["probability"] for im in result["images"] for d in im["detections"]}
+    assert all(cal["probabilities"][i] > before[i] for i in ids)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"contacts": [{"id": "c99999", "real": True}], "images": []},
+        {"contacts": [], "images": [{"index": 5, "objects": []}]},
+        {"contacts": [], "images": [{"index": 0, "objects": [[5, 5, 2, 2]]}]},
+    ],
+)
+def test_audit_rejects_bad_input(setup, body):
+    client, _, _ = setup
+    result = analyze_many(client, 1)
+    response = client.post(f"/api/packs/{result['survey_id']}/audit", json=body)
+    assert response.status_code == 422
+
+
+def test_audit_unknown_survey(setup):
+    client, _, _ = setup
+    response = client.post("/api/packs/" + "f" * 32 + "/audit", json={"contacts": [], "images": []})
+    assert response.status_code == 404
+
+
+def test_audit_is_chained_in_the_ledger(setup, tmp_path):
+    from netsight.trust.provenance import Ledger
+
+    client, _, _ = setup
+    result = analyze_many(client, 1)
+    client.post(f"/api/packs/{result['survey_id']}/audit", json={"contacts": [], "images": []})
+    ledgers = list(tmp_path.glob("ledger.jsonl"))
+    entries = [e for e in Ledger(ledgers[0]).entries() if e.get("kind") == "review"]
+    assert entries and entries[-1]["payload"]["survey_id"] == result["survey_id"]
+
+
+def test_completeness_refuses_pipelines_and_wrecks(setup):
+    client, _, _ = setup
+    result = analyze(client, profile="subpipe", completeness="true").json()
+    assert "completeness" not in result or result["completeness"]["available"] is False
+    from netsight.app.server import completeness_refusal
+
+    assert "pipelines and wrecks" in completeness_refusal("sctd", None)
+    assert "audit" in completeness_refusal("general", None)
+    assert completeness_refusal("general", ["donor"]) is None
+    assert completeness_refusal("ghostvision", None) is None
+
+
+def test_target_library_uses_real_point_object_datasets_only():
+    from netsight.app.server import LIBRARY_DATASETS
+
+    assert LIBRARY_DATASETS == ("mine", "ghostvision", "aquascan")
