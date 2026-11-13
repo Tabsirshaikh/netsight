@@ -270,9 +270,9 @@ export function AuditPanel({ result, plan, disabled = false, onProbabilities }: 
             <h3>Completeness</h3>
             {score.completeness.available ? (
               <>
-                <p>Pd for objects like the ones you marked: {percent(score.completeness.pd)} (90% lower bound {percent(score.completeness.pd_lower90)})</p>
-                <p>Trials: {score.completeness.trials ?? '—'}</p>
-                <p>{score.completeness.caveat}</p>
+                <p>{score.completeness.summary ?? `Pd for objects like the ones you marked: ${percent(score.completeness.pd ?? null)} (90% lower bound ${percent(score.completeness.pd_lower90 ?? null)})`}</p>
+                {score.completeness.warnings?.map(w => <p key={w} className="ns-audit-warning">{w}</p>)}
+                <details><summary>How this is measured</summary><p>{score.completeness.caveat}</p></details>
               </>
             ) : <p>{score.completeness.reason}</p>}
           </section>

@@ -494,6 +494,7 @@ def measure_completeness(
         not_searched=not_searched,
     )
     ok = [c for c in cells if c.status == "ok"]
+    flagged = int(sum(np.count_nonzero(np.asarray(s) >= threshold) for _, s, _ in predictions))
     n = sum(c.n_trials for c in cells)
     k = sum(c.n_detected for c in cells)
     if audit:
@@ -536,6 +537,10 @@ def measure_completeness(
         "detected": k,
         "pd": k / n if n else None,
         "pd_lower90": one_sided_lower(k, n, alpha=0.10) if n else None,
+        "pd_upper90": 1 - one_sided_lower(n - k, n, alpha=0.10) if n else None,
+        "threshold": threshold,
+        "summary": _completeness_summary(k, n, threshold, flagged),
+        "warnings": _completeness_warnings(n, flagged, len(images)),
         "cells_ok": len(ok),
         "cells": [c.to_dict() for c in cells],
         "caveat": caveat,
@@ -676,6 +681,41 @@ def replay_survey(runtime: Runtime, survey_dir: Path) -> dict[str, Any]:
             "tolerance": "boxes < 0.5 px, P(real) < 0.001 (GPU kernels are not bit-exact)",
         }
     )
+
+
+MIN_COMPLETENESS_TRIALS = 30
+
+
+def _completeness_summary(k: int, n: int, threshold: float, flagged: int) -> str:
+    from netsight.trust.bounds import one_sided_lower
+
+    if not n:
+        return "No pasted copies could be placed on free seabed, so nothing was measured."
+    lo = one_sided_lower(k, n, alpha=0.10)
+    hi = 1 - one_sided_lower(n - k, n, alpha=0.10)
+    bar = "none (no contact is flagged)" if not math.isfinite(threshold) else f"{threshold:.3f}"
+    return (
+        f"The detector flagged {k} of {n} pasted copies at this survey's flag bar ({bar}, "
+        f"set by the false-alarm budget; {flagged} contact(s) flagged in the survey). "
+        f"Likely detection rate for objects like these: {100 * lo:.0f}% to {100 * hi:.0f}% "
+        "(90% one-sided bounds)."
+    )
+
+
+def _completeness_warnings(n: int, flagged: int, n_images: int) -> list[str]:
+    out = []
+    if n < MIN_COMPLETENESS_TRIALS:
+        out.append(
+            f"Only {n} pasted copies: too few to pin the rate down (aim for "
+            f"{MIN_COMPLETENESS_TRIALS}+); mark more objects or add more images."
+        )
+    if flagged <= max(2, n_images // 2):
+        out.append(
+            f"The budget flags only {flagged} contact(s) here, so only the very strongest "
+            "objects count as found. A higher false-alarm budget gives a lower flag bar and "
+            "a higher detection rate."
+        )
+    return out
 
 
 def make_audit_plan(

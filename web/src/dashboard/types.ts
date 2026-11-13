@@ -70,6 +70,9 @@ export interface MeasuredCompleteness {
   method: string;
   library_size: number;
   library_source?: 'audit' | 'validation';
+  pd_upper90?: number | null;
+  summary?: string;
+  warnings?: string[];
   multi_pass?: MultiPass;
   profile: string;
   grid: [number, number];
@@ -159,6 +162,9 @@ export interface AuditResult {
     trials?: number;
     caveat?: string;
     library_source?: string;
+    pd_upper90?: number | null;
+    summary?: string;
+    warnings?: string[];
   };
 }
 

@@ -513,3 +513,14 @@ def test_replay_detects_edited_saved_results(setup, tmp_path):
     pack.write_text(json.dumps(saved), "utf-8")
     replay = client.post(f"/api/packs/{result['survey_id']}/replay").json()
     assert replay["reproduced"] is False and replay["max_probability_diff"] > 0.1
+
+
+def test_completeness_explains_itself_in_plain_words():
+    from netsight.app.server import _completeness_summary, _completeness_warnings
+
+    text = _completeness_summary(0, 16, 0.957, 1)
+    assert "0 of 16" in text and "flag bar (0.957" in text and "0% to 13%" in text
+    assert "nothing was measured" in _completeness_summary(0, 0, 0.5, 3)
+    warnings = " ".join(_completeness_warnings(16, 1, 1))
+    assert "too few" in warnings and "only 1 contact" in warnings
+    assert _completeness_warnings(40, 30, 10) == []

@@ -23,7 +23,11 @@ export function CompletenessResults({ completeness, result, imageIndex, onImage 
         <h3>Search completeness</h3>
         <span className={`ns-claim-badge ${c.claim_level}`}>{c.claim_level}</span>
       </div>
-      <p className={c.claim_level === 'calibrated' ? 'ns-micro ns-verbatim' : 'ns-preview-note ns-verbatim'}>{c.caveat}</p>
+      {c.summary && <p>{c.summary}</p>}
+      {c.warnings?.map(w => <p key={w} className="ns-preview-note">{w}</p>)}
+      <details><summary className="ns-micro">How this is measured</summary>
+        <p className={c.claim_level === 'calibrated' ? 'ns-micro ns-verbatim' : 'ns-preview-note ns-verbatim'}>{c.caveat}</p>
+      </details>
       <dl className="ns-summary-list">
         <div><dt>Overall Pd{c.claim_level !== 'calibrated' ? ' · indicative' : ''}</dt><dd>{percent(c.pd)}</dd></div>
         <div><dt>90% lower bound</dt><dd>{percent(c.pd_lower90)}</dd></div>
