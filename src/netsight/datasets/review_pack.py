@@ -5,7 +5,8 @@ images 1.1", annotations.xml). Delete wrong boxes, keep right ones; change "prop
 to "object" when it is a real object. Export with the same format; read back with
 ``read_decisions``.
 
-    python -m netsight.datasets.review_pack --set mine --reviews relabel_gemini_mine,relabel_sol_mine \
+    python -m netsight.datasets.review_pack --set mine \
+        --reviews relabel_gemini_mine,relabel_sol_mine \
         --out review_packs/mine_test
 """
 
