@@ -25,7 +25,7 @@ def scale_factors(factors: list[tuple[int, int, int, int]]) -> bytes:
     payload = struct.pack(">i", len(factors))
     for identifier, flag, multiplier, offset in factors:
         payload += struct.pack(">Iii", identifier << 24 | flag, multiplier, offset)
-    return subrecord(21, payload)
+    return subrecord(100, payload)  # GSF_SWATH_BATHY_SUBRECORD_SCALE_FACTORS
 
 
 def ping(
@@ -70,7 +70,7 @@ def write_gsf(path: Path, records: list[bytes] | None = None) -> Path:
         )
         records = [
             ping(subrecords=first),
-            record(7, b"abc", checksum=True),
+            record(6, b"abc", checksum=True),  # GSF_RECORD_COMMENT
             ping(
                 seconds=2,
                 nanoseconds=456,

@@ -1,7 +1,8 @@
 """Read the navigation and beam-array subset of GSF v3.x.
 
-Tested on synthetic files written from the published format description;
-not yet verified on vendor files.
+Verified on a real NOAA file (CC_BlockA03, Reson 7125; tests/data) as well as synthetic
+files. The first version was written from the format description alone and read scale
+factors from the wrong subrecord, so it could not read real files.
 
 Checksum words are consumed but not verified. Compressed array encodings other
 than uncompressed integer widths are rejected rather than guessed. Scale factors
@@ -30,20 +31,22 @@ from ._multibeam_binary import (
 )
 from .multibeam import MultibeamPing, MultibeamRecord
 
+# Record identifiers as in gsf.h (GSF_RECORD_*); checked on a real NOAA file (2026-11-13).
 _RECORD_NAMES = {
     1: "HEADER",
     2: "SWATH_BATHYMETRY_PING",
-    4: "SOUND_VELOCITY_PROFILE",
-    5: "PROCESSING_PARAMETERS",
-    6: "SENSOR_PARAMETERS",
-    7: "COMMENT",
-    8: "HISTORY",
-    9: "NAVIGATION_ERROR",
-    10: "SWATH_BATHY_SUMMARY",
-    11: "SINGLE_BEAM_PING",
-    12: "HV_NAVIGATION_ERROR",
-    13: "ATTITUDE",
+    3: "SOUND_VELOCITY_PROFILE",
+    4: "PROCESSING_PARAMETERS",
+    5: "SENSOR_PARAMETERS",
+    6: "COMMENT",
+    7: "HISTORY",
+    8: "NAVIGATION_ERROR",
+    9: "SWATH_BATHY_SUMMARY",
+    10: "SINGLE_BEAM_PING",
+    11: "HV_NAVIGATION_ERROR",
+    12: "ATTITUDE",
 }
+_SCALE_FACTORS = 100  # GSF_SWATH_BATHY_SUBRECORD_SCALE_FACTORS
 _PING_HEADER = struct.Struct(">4i5hiH3h2H3ih")
 _ARRAY_IDS = {1, 2, 3, 6, 7}
 # Each entry is (compression/width flag, multiplier, offset).
@@ -105,17 +108,19 @@ def _ping(
         require(payload, position, size, f"GSF subrecord {identifier}")
         body = payload[position : position + size]
         position += size
-        if identifier in _ARRAY_IDS | {16, 21}:
+        if identifier == 0 and size == 0:
+            continue  # zero-length end marker written by some vendors
+        if identifier in _ARRAY_IDS | {16, _SCALE_FACTORS}:
             if identifier in subrecords:
                 raise ValueError(f"Duplicate GSF subrecord {identifier} in one ping")
             subrecords[identifier] = body
         else:
             skipped[f"subrecord:{identifier}"] += 1
-            if identifier >= 100:
+            if identifier > _SCALE_FACTORS:
                 sensors.add(identifier)
 
-    if 21 in subrecords:
-        _scales(subrecords[21], scales)
+    if _SCALE_FACTORS in subrecords:
+        _scales(subrecords[_SCALE_FACTORS], scales)
     arrays = {
         identifier: _array(body, identifier, beams, scales)
         for identifier, body in subrecords.items()
@@ -154,8 +159,7 @@ def _ping(
 def read_gsf(path: PathInput) -> MultibeamRecord:
     """Read the supported GSF v3.x subset with counted skips and provenance.
 
-    Tested on synthetic files written from the published format description;
-    not yet verified on vendor files.
+    Verified on a real NOAA file (tests/test_gsf_real.py) and on synthetic files.
 
     Sensor-specific payloads, including sensor-specific sound speeds, are not
     decoded. Their IDs are retained as model identifiers and counted as skips.
