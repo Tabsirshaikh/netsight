@@ -80,7 +80,8 @@ Apache-2.0 COCO weights). Paired comparison on corrected (conservative v2) label
 
 It passed the gate, so one full training was run: model v0.6 = v0.4 recipe with D-FINE-M
 (`runs/research_v0.6`). Its comparison with v0.4 is in section 8. Pipeline surveys keep v0.4
-unless v0.6 recovers SubPipe. Cost: inference about 1.7x slower than v0.4.
+unless v0.6 recovers SubPipe. Cost: D-FINE paper latency S 3.5 ms vs M 5.6 ms (~1.6x); not yet
+measured on our CPU path.
 
 ## 8. v0.6 vs v0.4 (full training)
 
