@@ -60,12 +60,15 @@ def pred_dir(tmp_path: Path) -> Path:
 def test_fit_calibrator(pred_dir: Path) -> None:
     """Fit all eligible validation detections and return bounded probabilities."""
     calibrator, metadata = fit_calibrator(pred_dir)
+    reliability = metadata.pop("reliability")
     assert metadata == {
         "method": "beta",
         "fitted_on": "pooled validation detections",
         "n_fit": 80,
         "positives_fit": 4,
     }
+    assert set(reliability["methods"]) == {"NetSight (beta)", "B1 temperature", "B0 raw score"}
+    assert reliability["n_test"] == 80
     probabilities = calibrator.predict(np.asarray([0.1, 0.5, 0.95]))
     assert probabilities.shape == (3,)
     assert np.isfinite(probabilities).all()

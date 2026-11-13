@@ -949,6 +949,7 @@ def analyze_sync(
             "images": output,
             "timing_ms": round((time.perf_counter() - started) * 1000, 1),
             "hidden_candidates": hidden_candidates,
+            "calibration": runtime.calibration,
             "audit": audit_plan,
             "packs": {
                 "json": f"/api/packs/{survey_id}/evidence_pack.json",

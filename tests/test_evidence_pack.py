@@ -277,3 +277,21 @@ def test_km2_budget_states_searched_area(arguments: dict) -> None:
     text = json.dumps(build_pack(**arguments))
     assert "per km2" in text
     assert "0.04 km2 of insonified seabed" in text
+
+
+def test_reliability_diagram_is_drawn_not_dumped(arguments: dict) -> None:
+    import numpy as np
+
+    from netsight.trust.calibrators import BetaCalibrator
+    from netsight.trust.reliability import reliability_comparison
+
+    rng = np.random.default_rng(0)
+    s = rng.uniform(0.05, 1, 800)
+    y = rng.random(800) < s**2
+    arguments["calibration"] = {
+        **arguments["calibration"],
+        "reliability": reliability_comparison(s, y, s, y, BetaCalibrator().fit(s, y)),
+    }
+    html = render_html(build_pack(**arguments))
+    assert "<svg" in html and "Reliability on held-out surveys" in html
+    assert "mean_predicted" not in html  # the bins are drawn, not printed as a table cell

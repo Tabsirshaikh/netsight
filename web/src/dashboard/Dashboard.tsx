@@ -5,6 +5,7 @@ import { ContactMap } from './ContactMap';
 import { CompletenessResults, PlanResults } from './ResearchResults';
 import { CommandPalette } from './CommandPalette';
 import { AuditPanel } from './AuditPanel';
+import { ReliabilityChart } from './ReliabilityChart';
 import type { Command } from './CommandPalette';
 import { api, exportLinks, operatingPreview, percent, profiles } from './types';
 import type { Analysis, BudgetUnit, Contact, Health, ModelKey, Profile, Sample, Session } from './types';
@@ -547,6 +548,7 @@ export default function Dashboard() {
                 <p className="ns-micro">Recall: {result.operating.recall_source}. {localBudget && 'Re-run for a recall estimate at the preview budget.'}</p>
                 {(result.operating.unit ?? 'image') === 'image' && <p className="ns-micro">Count rule: top floor(budget × images) by raw score; boundary ties are included. The budget is not a measured false-alarm rate for this survey.</p>}
               </section>
+              {result.calibration?.reliability && <ReliabilityChart reliability={result.calibration.reliability} />}
               {result.completeness && <CompletenessResults completeness={result.completeness} result={result} imageIndex={imageIndex} onImage={chooseImage} />}
               <PlanResults url={result.packs.plan} onSelect={chooseContact} />
               <section className="ns-contact-section">

@@ -114,6 +114,7 @@ def test_analyze_synthetic_image(setup):
     result = response.json()
     assert result["model"]["id"] == "fake-v0.4"
     assert result["claim"]["level"] == "indicative"
+    assert result["calibration"] == {"source": "fake validation"}
     assert result["operating"]["flagged"] == 1
     assert result["operating"]["recall_ci"] == [0.6, 0.85]
     detections = result["images"][0]["detections"]

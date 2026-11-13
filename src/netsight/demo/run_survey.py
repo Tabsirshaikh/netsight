@@ -108,7 +108,32 @@ def fit_calibrator(pred_dir: Path) -> tuple[BetaCalibrator, dict[str, Any]]:
         "n_fit": int(scores.size),
         "positives_fit": int(labels.sum()),
     }
+    test = _matched_scores(pred_dir, "test_")
+    if test is not None and np.unique(test[1]).size == 2:
+        from netsight.trust.reliability import reliability_comparison
+
+        metadata["reliability"] = reliability_comparison(
+            scores, labels, test[0], test[1], calibrator
+        )
     return calibrator, metadata
+
+
+def _matched_scores(pred_dir: Path, prefix: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """Detections (score >= 0.05) of every set with ``prefix``, matched at IoU 0.5."""
+    from netsight.detect.evaluation import match_detections
+
+    info = json.loads((pred_dir / "info.json").read_text(encoding="utf-8"))
+    s_parts, y_parts = [], []
+    for name in sorted(n for n in info["sets"] if n.startswith(prefix)):
+        predictions, ground_truth = _load_set(pred_dir / f"{name}.npz")
+        matched = match_detections(predictions, ground_truth, iou_threshold=0.5)
+        s = np.asarray(matched.scores, dtype=np.float64)
+        keep = s >= 0.05
+        s_parts.append(s[keep])
+        y_parts.append(np.asarray(matched.is_tp, dtype=bool)[keep])
+    if not s_parts:
+        return None
+    return np.concatenate(s_parts), np.concatenate(y_parts)
 
 
 def survey_detections(pred_dir: Path, set_name: str, group: str | None = None) -> SurveyDetections:

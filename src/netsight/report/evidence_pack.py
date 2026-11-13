@@ -352,8 +352,20 @@ def render_html(pack: dict) -> str:
         ["Field", "Value"], [[key, value] for key, value in sorted(pack["operating"].items())]
     )
     calibration = _table(
-        ["Field", "Value"], [[key, value] for key, value in sorted(pack["calibration"].items())]
+        ["Field", "Value"],
+        [[key, value] for key, value in sorted(pack["calibration"].items()) if key != "reliability"],
     )
+    if pack["calibration"].get("reliability"):
+        from netsight.trust.reliability import reliability_svg
+
+        rel = pack["calibration"]["reliability"]
+        calibration += (
+            "<h3>Reliability on held-out surveys</h3>"
+            f"<p>{_text(rel['n_test'])} detections ({_text(rel['positives_test'])} real) from "
+            "test surveys never used for training or calibration. Points on the dashed line "
+            "mean the shown P(real) matches how often contacts were real; bars are 95% "
+            "intervals.</p>" + reliability_svg(rel)
+        )
     contacts = _table(
         ["ID", "Image", "Box", "Probability", "Raw score", "Review", "Soft evidence"],
         rows,

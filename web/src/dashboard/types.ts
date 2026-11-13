@@ -155,6 +155,7 @@ export interface Analysis {
     recall_source: string;
   };
   audit?: AuditPlan;
+  calibration?: CalibrationInfo;
   images: SurveyImage[];
   timing_ms: number;
   packs: Packs;
@@ -261,3 +262,12 @@ export function operatingPreview(result: Analysis, budget: number) {
   );
   return { threshold, flags, target: count };
 }
+
+export interface ReliabilityBin { mean_predicted: number; observed_rate: number; ci_low: number; ci_high: number; count: number }
+export interface Reliability {
+  held_out: string;
+  n_test: number;
+  positives_test: number;
+  methods: Record<string, { ece: number; brier: number; bins: ReliabilityBin[] }>;
+}
+export interface CalibrationInfo { method?: string; fitted_on?: string; reliability?: Reliability }
