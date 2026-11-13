@@ -603,6 +603,81 @@ def associate_survey(
     }
 
 
+def replay_survey(runtime: Runtime, survey_dir: Path) -> dict[str, Any]:
+    """Re-run detector, calibrator and threshold on the saved inputs; compare with the pack.
+
+    The saved previews are the exact pixels the model saw (lossless PNG). GPU kernels are not
+    bit-exact, so boxes may differ by under 0.5 px and probabilities by under 0.001.
+    """
+    from netsight.trust.replay import verify_pack
+
+    saved = json.loads((survey_dir / "candidates.json").read_text("utf-8"))
+    bundle = runtime.models[saved["model"]]
+    n_images = int(saved["n_images"])
+    replayed: dict[str, dict[str, Any]] = {}
+    all_scores = []
+    number = 0
+    for i in range(n_images):
+        image = np.asarray(Image.open(survey_dir / "images" / f"{i}.png").convert("L"))
+        boxes, scores = runtime.predictor(
+            bundle.model,
+            bundle.processor,
+            image,
+            tile_px=640,
+            device=runtime.device,
+            views="hflip" if saved["tta"] else "none",
+        )
+        boxes = np.asarray(boxes, float).reshape(-1, 4)
+        scores = np.asarray(scores, float).reshape(-1)
+        probs = (
+            np.asarray(runtime.calibrator.predict(scores), float).reshape(-1)
+            if len(scores)
+            else np.empty(0)
+        )
+        all_scores.append(scores)
+        for box, score, prob in zip(boxes, scores, np.clip(probs, 0, 1), strict=True):
+            number += 1
+            if score >= AUDIT_FLOOR:
+                replayed[f"c{number:05d}"] = {"box": box, "raw_score": score, "probability": prob}
+    scores_all = np.concatenate(all_scores) if all_scores else np.empty(0)
+    units = saved.get("area_km2") if saved.get("budget_unit") == "km2" else n_images
+    threshold = float(runtime.threshold(scores_all, units, float(saved.get("budget", 1.0))))
+    stored = {c["id"]: c for c in saved["candidates"]}
+    common = sorted(set(stored) & set(replayed))
+    box_diff = max(
+        (float(np.abs(np.asarray(stored[k]["box"]) - replayed[k]["box"]).max()) for k in common),
+        default=0.0,
+    )
+    prob_diff = max(
+        (abs(stored[k]["probability"] - float(replayed[k]["probability"])) for k in common),
+        default=0.0,
+    )
+    saved_threshold = math.inf if saved["threshold"] is None else float(saved["threshold"])
+    flagged_saved = {k for k, c in stored.items() if c["raw_score"] >= saved_threshold}
+    flagged_new = {k for k, c in replayed.items() if c["raw_score"] >= threshold}
+    same_ids = set(stored) == set(replayed)
+    reproduced = bool(
+        same_ids and box_diff < 0.5 and prob_diff < 1e-3 and flagged_saved == flagged_new
+    )
+    return json_safe(
+        {
+            "survey_id": survey_dir.name,
+            "reproduced": reproduced,
+            "candidates_saved": len(stored),
+            "candidates_replayed": len(replayed),
+            "same_contact_ids": same_ids,
+            "max_box_diff_px": box_diff,
+            "max_probability_diff": prob_diff,
+            "threshold_saved": saved["threshold"],
+            "threshold_replayed": threshold,
+            "flagged_same": flagged_saved == flagged_new,
+            "model_manifest_sha256": bundle.manifest.get("manifest_sha256"),
+            "pack_problems": verify_pack(survey_dir, runtime.ledger_path),
+            "tolerance": "boxes < 0.5 px, P(real) < 0.001 (GPU kernels are not bit-exact)",
+        }
+    )
+
+
 def make_audit_plan(
     survey_id: str, candidates: list[dict[str, Any]], n_images: int, level: str, recall: float
 ) -> dict[str, Any]:
@@ -1079,6 +1154,9 @@ def analyze_sync(
                         "model": model_key,
                         "profile": profile,
                         "tta": tta,
+                        "budget": budget,
+                        "budget_unit": budget_unit,
+                        "area_km2": area_km2,
                         "n_images": len(images),
                         "waterfall": [g is None for g in georefs],
                         "candidates": candidates,
@@ -1386,6 +1464,23 @@ def create_app(factory: Callable[[], Runtime] | None = None) -> FastAPI:
             media_type=DOWNLOADS.get(filename, "image/tiff"),
             filename=None if filename.endswith(".html") else filename,
         )
+
+    @app.post("/api/packs/{survey_id}/replay")
+    async def replay(survey_id: str) -> dict:
+        """Re-run a saved survey and check its pack against the ledger (plan WP9)."""
+        state = await get_runtime()
+        directory = pack_directory(state, survey_id)
+        if not (directory / "candidates.json").is_file():
+            raise HTTPException(404, "Unknown survey.")
+        async with lock:
+            try:
+                with anyio.CancelScope(shield=True):
+                    return await anyio.to_thread.run_sync(replay_survey, state, directory)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                LOG.exception("Replay failed")
+                raise HTTPException(500, "Replay failed. Check the API terminal.") from exc
 
     @app.post("/api/packs/{survey_id}/audit")
     async def audit(survey_id: str, body: dict[str, Any]) -> dict:

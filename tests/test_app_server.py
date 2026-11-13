@@ -492,3 +492,24 @@ def test_corrupt_raw_file_is_a_clear_422(setup):
         files=[("files", ("bad.xtf", b"\x01" * 64, "application/octet-stream"))],
     )
     assert response.status_code == 422 and "bad.xtf" in response.json()["detail"]
+
+
+def test_replay_reproduces_the_saved_survey(setup):
+    client, _, _ = setup
+    result = analyze_many(client, 2)
+    replay = client.post(f"/api/packs/{result['survey_id']}/replay").json()
+    assert replay["reproduced"] is True
+    assert replay["candidates_saved"] == replay["candidates_replayed"] > 0
+    assert replay["max_probability_diff"] == 0 and replay["flagged_same"] is True
+    assert "pack_problems" in replay
+
+
+def test_replay_detects_edited_saved_results(setup, tmp_path):
+    client, _, _ = setup
+    result = analyze_many(client, 1)
+    pack = tmp_path / "packs" / result["survey_id"] / "candidates.json"  # fixture's output_dir
+    saved = json.loads(pack.read_text("utf-8"))
+    saved["candidates"][0]["probability"] = 0.999
+    pack.write_text(json.dumps(saved), "utf-8")
+    replay = client.post(f"/api/packs/{result['survey_id']}/replay").json()
+    assert replay["reproduced"] is False and replay["max_probability_diff"] > 0.1
