@@ -79,10 +79,32 @@ Apache-2.0 COCO weights). Paired comparison on corrected (conservative v2) label
 | SubPipe (original labels, IoU 0.3) | 0.686 | 0.568 | **-0.118** (-0.199, -0.038) |
 
 It passed the gate, so one full training was run: model v0.6 = v0.4 recipe with D-FINE-M
-(`runs/research_v0.6`). Its comparison with v0.4 is in section 8. Pipeline surveys keep v0.4
-unless v0.6 recovers SubPipe. Cost: D-FINE paper latency S 3.5 ms vs M 5.6 ms (~1.6x); not yet
+(`runs/research_v0.6`). It did NOT hold up in full training (section 8). Cost: D-FINE paper latency S 3.5 ms vs M 5.6 ms (~1.6x); not yet
 measured on our CPU path.
 
-## 8. v0.6 vs v0.4 (full training)
+## 8. v0.6 vs v0.4 (full training): rejected, v0.4 stays
 
-(filled in when training finishes)
+v0.6 trained 25 epochs (early stop; best validation epoch 19, ~5 h). On the validation sets it
+looked clearly better (mean AP50 0.584 vs 0.525; mine 0.36 vs 0.29). On the held-out test
+surveys it is worse. Paired image bootstrap, 1000 resamples, v0.6 minus v0.4:
+
+| Test set | labels | v0.4 | v0.6 | change (95% CI) |
+|---|---|---|---|---|
+| mine | conservative v2, IoU 0.5 | 0.334 | 0.262 | **-0.071** (-0.111, -0.032) |
+| GhostVision | conservative v2, IoU 0.5 | 0.557 | 0.538 | -0.020 (-0.055, +0.020) |
+| Contact (other sensor) | conservative v2, IoU 0.5 | 0.388 | 0.293 | **-0.095** (-0.125, -0.068) |
+| AquaScan | original, IoU 0.5 | 0.615 | 0.643 | +0.028 (-0.016, +0.075) |
+| SCTD | original, IoU 0.5 | 0.817 | 0.776 | -0.041 (-0.091, +0.025) |
+| SubPipe | original, IoU 0.3 | 0.669 | 0.707 | +0.038 (-0.069, +0.144) |
+
+(IoU 0.3 on conservative v2: mine -0.106, GhostVision +0.008, Contact -0.124; same verdict.)
+
+Decision: **v0.4 stays the general model**; v0.6 is not used. Lessons:
+
+1. The 1-hour test compared medium vs small at a short budget; at full length the small model
+   catches up and the medium one generalises worse to new surveys and sensors (Contact -0.095).
+2. The validation sets are too small to pick a model (mine has 30 objects): a +0.07 validation
+   gain turned into a -0.07 test loss. Model choice must stay on held-out test surveys with the
+   corrected labels, and a proxy win needs a full-length confirmation before it is believed.
+3. Model size is not the bottleneck. The remaining levers are those in section 6: human-checked
+   test labels and more varied real surveys.
