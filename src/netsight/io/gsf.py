@@ -21,7 +21,7 @@ from netsight.core.records import Provenance
 
 from ._multibeam_binary import (
     READER_VERSION,
-    SYNTHETIC_NOTICE,
+    VERIFIED_NOTICE,
     PathInput,
     coordinate,
     heading,
@@ -210,7 +210,7 @@ def read_gsf(path: PathInput) -> MultibeamRecord:
 
     if version is None:
         raise ValueError("Missing GSF v3.x HEADER record")
-    notes = [SYNTHETIC_NOTICE]
+    notes = [VERIFIED_NOTICE["GSF"]]
     notes.extend(f"Skipped {name}: {count}" for name, count in sorted(skipped.items()))
     notes.extend(
         f"Backscatter source {name}: {count} pings"

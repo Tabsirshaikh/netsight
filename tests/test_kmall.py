@@ -126,7 +126,6 @@ def test_trailing_length_mismatch_reports_datagram_offset(tmp_path: Path) -> Non
     ("encoded", "message"),
     [
         (mrz(partitions=2), "multipart"),
-        (mrz(fans=2), "multi-fan"),
         (mrz(nanoseconds=1_000_000_000), "nanoseconds"),
         (mrz()[:-5], "Truncated"),
         (b"", "Empty KMALL"),
@@ -169,3 +168,45 @@ def test_unknown_mrz_version_rejected(tmp_path: Path) -> None:
 def test_missing_path_is_value_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Cannot read multibeam source"):
         read_kmall(tmp_path / "absent.kmall")
+
+
+def test_multi_fan_pings_are_joined_into_one_ping(tmp_path: Path) -> None:
+    """Real Kongsberg systems (EM304, EM2040 dual swath) write one MRZ per receive fan."""
+    a = [(0, -25.5, 12.5, -3.0, 1.25), (0, -26.0, 13.0, -2.0, 1.0)]
+    b = [(0, -27.0, 14.0, 2.0, 0.5), (0, -28.0, 15.0, 3.0, 0.25)]
+    path = write_kmall(
+        tmp_path / "fans.kmall",
+        [mrz(fans=2, fan_index=0, soundings=a), mrz(fans=2, fan_index=1, soundings=b)],
+    )
+    result = read_kmall(path)
+    assert result.number_of_pings == 1
+    np.testing.assert_allclose(result.pings[0].depth, [12.5, 13.0, 14.0, 15.0])
+    np.testing.assert_allclose(result.pings[0].across_track, [-3.0, -2.0, 2.0, 3.0])
+
+
+def test_ping_missing_a_fan_is_kept_and_noted(tmp_path: Path) -> None:
+    path = write_kmall(
+        tmp_path / "partial.kmall",
+        [
+            mrz(fans=2, fan_index=0, ping_count=1),
+            mrz(fans=2, fan_index=0, ping_count=2),
+            mrz(fans=2, fan_index=1, ping_count=2),
+        ],
+    )
+    result = read_kmall(path)
+    assert result.number_of_pings == 2
+    assert any("1 pings missing receive fans" in n for n in result.notes)
+
+
+def test_dual_swath_gives_two_complete_pings(tmp_path: Path) -> None:
+    """EM304 dual swath (real NOAA layout): 2 fans = 2 along-track swaths of 1 fan each."""
+    path = write_kmall(
+        tmp_path / "dual.kmall",
+        [
+            mrz(fans=2, fan_index=0, swaths=2, swath_position=0),
+            mrz(fans=2, fan_index=1, swaths=2, swath_position=1),
+        ],
+    )
+    result = read_kmall(path)
+    assert result.number_of_pings == 2
+    assert not any("missing" in n for n in result.notes)

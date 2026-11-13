@@ -34,6 +34,10 @@ def mrz(
     extension: int = 0,
     partitions: int = 1,
     fans: int = 1,
+    fan_index: int = 0,
+    ping_count: int = 7,
+    swaths: int = 1,
+    swath_position: int = 0,
 ) -> bytes:
     """Write tuples of (detection type, dB, depth, across, along).
 
@@ -45,7 +49,8 @@ def mrz(
     extras = extra_soundings or []
     common_size = 12 + extension
     common = bytearray(common_size)
-    struct.pack_into("<HH8B", common, 0, common_size, 7, fans, 0, 1, 0, 0, 0, 1, 0)
+    cmn = (ping_count, fans, fan_index, swaths, swath_position, 0, 0, 1, 0)
+    struct.pack_into("<HH8B", common, 0, common_size, *cmn)
     info_size = 152 + extension
     info = bytearray(info_size)
     struct.pack_into("<H", info, 0, info_size)

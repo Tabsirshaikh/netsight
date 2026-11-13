@@ -7,11 +7,11 @@ import numpy as np
 
 PathInput = str | PathLike[str]
 
-READER_VERSION = "1.0"
-SYNTHETIC_NOTICE = (
-    "Tested on synthetic files written from the published format description; "
-    "not yet verified on vendor files."
-)
+READER_VERSION = "1.1"
+VERIFIED_NOTICE = {
+    "GSF": "Verified on real NOAA GSF (Reson 7125, CC_BlockA03) and synthetic files.",
+    "KMALL": "Verified on real NOAA KMALL (EM304 dual swath, EX2101) and synthetic files.",
+}
 
 
 def read_source(path: PathInput) -> tuple[Path, bytes]:

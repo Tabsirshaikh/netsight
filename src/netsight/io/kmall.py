@@ -1,15 +1,16 @@
 """Read the navigation and sounding subset of Kongsberg KMALL MRZ datagrams.
 
-Tested on synthetic files written from the published format description;
-not yet verified on vendor files.
+Verified on a real NOAA Okeanos Explorer EM304 file (multi-fan pings) and on synthetic
+files. The first version rejected multi-fan pings, so it could not read typical real files.
 
 The offset tables below follow the published EM datagram format Rev. H/I,
 including fields not extracted here. In that layout reflectivity1_dB is at byte
 48, not 12 (rangeFactor); z_reRefPoint_m is at byte 96, not 72
 (beamAngleReRx_deg). Offsets are relative to their respective structures.
 
-Multipart MRZ datagrams and multi-fan pings are explicitly rejected, rather than
-returning incomplete or incorrectly assembled pings. Seabed-image samples and
+Each MRZ datagram holds one receive fan; fans with the same ping counter and swath position
+are joined into one ping (missing fans are counted in the notes). Multipart MRZ datagrams are
+rejected rather than assembled. Seabed-image samples and
 fields not needed for the returned measurements are not decoded.
 """
 
@@ -23,7 +24,7 @@ from netsight.core.records import Provenance
 
 from ._multibeam_binary import (
     READER_VERSION,
-    SYNTHETIC_NOTICE,
+    VERIFIED_NOTICE,
     PathInput,
     coordinate,
     heading,
@@ -59,7 +60,10 @@ SOUNDING_OFFSETS = {
 _HEADER = struct.Struct("<I4sBBHII")
 
 
-def _mrz(body: bytes, seconds: int, nanoseconds: int, datagram_offset: int) -> MultibeamPing:
+def _mrz(
+    body: bytes, seconds: int, nanoseconds: int, datagram_offset: int
+) -> tuple[MultibeamPing, tuple[int, int], int]:
+    """One receive fan: (ping, (ping counter, swath position), fans per swath)."""
     context = f"KMALL #MRZ at offset {datagram_offset}"
     require(body, 0, 4, f"{context} partition")
     partitions, partition = struct.unpack_from("<HH", body)
@@ -68,12 +72,14 @@ def _mrz(body: bytes, seconds: int, nanoseconds: int, datagram_offset: int) -> M
 
     position = 4
     require(body, position, 12, f"{context} common part")
-    common_size, _, fans, fan_index = struct.unpack_from("<HHBB", body, position)
+    common_size, ping_count, fans, fan_index, swaths, swath_position = struct.unpack_from(
+        "<HHBBBB", body, position
+    )
     if common_size < 12:
         raise ValueError(f"{context}: numBytesCmnPart must be at least 12")
     require(body, position, common_size, f"{context} common part")
-    if fans != 1 or fan_index != 0:
-        raise ValueError(f"{context}: multi-fan MRZ pings are not supported")
+    if fans < 1 or fan_index >= fans:
+        raise ValueError(f"{context}: invalid receive fan {fan_index} of {fans}")
     position += common_size
 
     require(body, position, 2, f"{context} pingInfo size")
@@ -135,7 +141,7 @@ def _mrz(body: bytes, seconds: int, nanoseconds: int, datagram_offset: int) -> M
     sound_speed = float(info_value("soundSpeedAtTxDepth_mPerSec", "f"))
     if not np.isfinite(sound_speed) or sound_speed <= 0:
         sound_speed = float("nan")
-    return MultibeamPing(
+    ping = MultibeamPing(
         time=timestamp(seconds, nanoseconds, context),
         latitude=coordinate(float(info_value("latitude_deg", "d")), 90),
         longitude=coordinate(float(info_value("longitude_deg", "d")), 180),
@@ -148,13 +154,35 @@ def _mrz(body: bytes, seconds: int, nanoseconds: int, datagram_offset: int) -> M
         valid=(flags == 0) | (flags == 1),
         beam_flags=flags,
     )
+    # rxFansPerPing counts every fan of the ping; with several along-track swaths (EM304 dual
+    # swath) each swath is its own full-width line, so fans per swath = fans / swaths
+    return ping, (ping_count, swath_position), max(1, fans // max(swaths, 1))
+
+
+def _join(first: MultibeamPing, fan: MultibeamPing) -> MultibeamPing:
+    """Append one receive fan's beams to a ping (navigation from the first fan)."""
+    from dataclasses import replace
+
+    flags = (
+        np.concatenate([first.beam_flags, fan.beam_flags])
+        if first.beam_flags is not None and fan.beam_flags is not None
+        else None
+    )
+    return replace(
+        first,
+        across_track=np.concatenate([first.across_track, fan.across_track]),
+        along_track=np.concatenate([first.along_track, fan.along_track]),
+        depth=np.concatenate([first.depth, fan.depth]),
+        backscatter=np.concatenate([first.backscatter, fan.backscatter]),
+        valid=np.concatenate([first.valid, fan.valid]),
+        beam_flags=flags,
+    )
 
 
 def read_kmall(path: PathInput) -> MultibeamRecord:
-    """Read single-part, single-fan MRZ pings; count all other datagram types.
+    """Read single-part MRZ pings (receive fans joined); count all other datagram types.
 
-    Tested on synthetic files written from the published format description;
-    not yet verified on vendor files.
+    Verified on a real NOAA EM304 file and on synthetic files.
 
     MRZ datagram versions 0 through 3 share the extracted structure prefixes.
     Larger structures are traversed using their declared byte lengths.
@@ -167,6 +195,8 @@ def read_kmall(path: PathInput) -> MultibeamRecord:
     versions: dict[str, set[int]] = {}
     models: set[int] = set()
     pings: list[MultibeamPing] = []
+    last_key: tuple[int, int] | None = None
+    fans_seen: list[tuple[int, int]] = []  # (fans received, fans expected) per ping
     position = 0
     while position < len(data):
         require(data, position, _HEADER.size, "KMALL datagram header")
@@ -196,14 +226,27 @@ def read_kmall(path: PathInput) -> MultibeamRecord:
             if version not in {0, 1, 2, 3}:
                 raise ValueError(f"Unsupported KMALL #MRZ version {version} at offset {position}")
             body = data[position + _HEADER.size : position + size - 4]
-            pings.append(_mrz(body, seconds, nanoseconds, position))
+            ping, key, fans = _mrz(body, seconds, nanoseconds, position)
+            if fans > 1 and key == last_key and fans_seen[-1][0] < fans:
+                pings[-1] = _join(pings[-1], ping)
+                fans_seen[-1] = (fans_seen[-1][0] + 1, fans)
+            else:
+                pings.append(ping)
+                fans_seen.append((1, fans))
+            last_key = key
         else:
             skipped[name] += 1
         position += size
 
-    notes = [SYNTHETIC_NOTICE]
+    notes = [VERIFIED_NOTICE["KMALL"]]
     notes.extend(f"Skipped datagram {name}: {count}" for name, count in sorted(skipped.items()))
     notes.append("Backscatter source: MRZ reflectivity1_dB; no additional correction applied.")
+    multi = [s for s in fans_seen if s[1] > 1]
+    if multi:
+        notes.append(f"Receive fans joined per ping: {len(multi)} multi-fan pings")
+        missing = sum(1 for got, expected in multi if got < expected)
+        if missing:
+            notes.append(f"{missing} pings missing receive fans (kept with the fans present)")
     version_string = "; ".join(
         f"{name}=" + ",".join(str(value) for value in sorted(values))
         for name, values in sorted(versions.items())
